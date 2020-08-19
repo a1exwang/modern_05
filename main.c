@@ -4,6 +4,7 @@
 
 #include "efiConsoleControl.h"
 #include "efiUgaDraw.h"
+#include "include/init/efi_info.h"
 
 /**
 
@@ -51,6 +52,14 @@ static EFI_UGA_DRAW_PROTOCOL *UgaDraw = NULL;
 
 static EFI_GUID GraphicsOutputProtocolGuid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 static EFI_GRAPHICS_OUTPUT_PROTOCOL *GraphicsOutput = NULL;
+
+static EFI_GUID LoadFileProtocolGuid = EFI_LOAD_FILE_PROTOCOL_GUID;
+static EFI_LOAD_FILE_PROTOCOL *LoadFile = NULL;
+
+static EFI_GUID SimpleFileSystemProtocolGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+static EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *SimpleFileSystem = NULL;
+
+static EFI_GET_MEMORY_MAP EfiGetMemoryMap;
 
 static BOOLEAN egHasGraphics = FALSE;
 static UINTN egScreenWidth  = 800;
@@ -114,24 +123,88 @@ VOID egClearScreen()
     // EFI_GRAPHICS_OUTPUT_BLT_PIXEL and EFI_UGA_PIXEL have the same
     // layout, and the header from TianoCore actually defines them
     // to be the same type.
-    efi_call10(GraphicsOutput->Blt, GraphicsOutput, (EFI_GRAPHICS_OUTPUT_BLT_PIXEL *)&FillColor, EfiBltVideoFill,
+    efi_call10(GraphicsOutput->Blt, (uint64_t)GraphicsOutput,(uint64_t)(EFI_GRAPHICS_OUTPUT_BLT_PIXEL *)&FillColor, EfiBltVideoFill,
                         0, 0, 0, 0, egScreenWidth, egScreenHeight, 0);
     Print(L"using GraphicsOutput\n");
   } else if (UgaDraw != NULL) {
-    efi_call10(UgaDraw->Blt, UgaDraw, &FillColor, EfiUgaVideoFill, 0, 0, 0, 0, egScreenWidth, egScreenHeight, 0);
+    efi_call10(UgaDraw->Blt, (uint64_t)UgaDraw, (uint64_t)&FillColor, EfiUgaVideoFill, 0, 0, 0, 0, egScreenWidth, egScreenHeight, 0);
     Print(L"using Uga\n");
   }
 
 }
 
+uint64_t get_cs() {
+  uint64_t result;
+  asm ("mov $0, %%rax;"
+       "mov %%cs, %0"
+  : "=r"(result)
+  :
+  : "%rax"
+  );
+  return result;
+}
+
+char KernelData[1024*1024];
+
+
+
+char memoryDescriptors[1024*4] = {0};
 EFI_STATUS
 efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
    InitializeLib(ImageHandle, SystemTable);
    Print(L"Hello, world!\n");
+   UINTN memoryMapSize = sizeof(memoryDescriptors);
+   UINTN mapKey;
+   UINTN descriptorSize;
+   UINT32 descriptorVersion;
+   EFI_STATUS st = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &memoryDescriptors[0], &mapKey, &descriptorSize, &descriptorVersion);
+   if (st != EFI_SUCCESS) {
+     Print(L"Failed to GetMemoryMap 0x%lx\n", st);
+     return st;
+   }
+   Print(L"Descriptor version/size/count/mapkey: 0x%lx/0x%lx/0x%lx/0x%lx\n", descriptorVersion, descriptorSize, memoryMapSize / descriptorSize, mapKey);
+  struct EFIServicesInfo *p = (struct EFIServicesInfo*)EFIServiceInfoAddress;
+   for (int i = 0; i < memoryMapSize / descriptorSize; i++) {
+     EFI_MEMORY_DESCRIPTOR *md = (memoryDescriptors + descriptorSize*i);
+     if (md->Type != EfiReservedMemoryType) {
+       if (md->Type == EfiConventionalMemory && md->PhysicalStart == 0x100000) {
+         Print(L"Conventional memory region\n");
+         Print(L"0x%02lx 0x%08lx 0x%016lx 0x%016lx 0x%08lx 0x%08lx\n",
+               md->Type,
+               md->Pad,
+               md->PhysicalStart,
+               md->VirtualStart,
+               md->NumberOfPages,
+               md->Attribute);
+         p->phy_size = md->NumberOfPages * 4096;
+       }
+     }
+   }
 
-   egInitScreen();
-   Print(L"Screen initialized %lux%lu\n", egScreenWidth, egScreenHeight);
-   egClearScreen();
+//   egInitScreen();
+//   Print(L"Screen initialized %lux%lu\n", egScreenWidth, egScreenHeight);
+//   egClearScreen();
 
-   return EFI_SUCCESS;
+   uint64_t result = get_cs();
+   Print(L"cs: %04lx\n", result);
+
+   EFI_STATUS status = LibLocateProtocol(&SimpleFileSystemProtocolGuid, (VOID**)&SimpleFileSystem);
+   EFI_FILE_PROTOCOL *File;
+   efi_call2(SimpleFileSystem->OpenVolume,SimpleFileSystem, &File);
+
+   EFI_FILE_PROTOCOL *FileHandle;
+   status = efi_call5(File->Open, File, &FileHandle, L"kernel", EFI_FILE_MODE_READ, 0);
+   if (status != EFI_SUCCESS) {
+     Print(L"Failed to open kernel file\n");
+     return 1;
+   }
+   uint64_t BufferSize = 1048576 * 10;
+   char *Buffer = 0x200000 + BufferSize;
+   status = efi_call3(File->Read, File, &BufferSize, Buffer);
+   if (status != EFI_SUCCESS) {
+     Print(L"Failed to read kernel file st=%ld\n", status);
+     return 1;
+   }
+   Print(L"Kernel file size 0x%0lx\n", BufferSize);
+  return EFI_SUCCESS;
 }
