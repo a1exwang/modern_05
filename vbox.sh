@@ -1,5 +1,6 @@
 #!/bin/bash
 set -xue
+make sda.vdi
 VM=efidev
 vboxmanage controlvm efidev poweroff || true
 sleep 0.3

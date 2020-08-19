@@ -25,7 +25,9 @@ boot_loader.so: $(OBJS)
 	ld $(LDFLAGS) $(OBJS) -o $@ -lefi -lgnuefi
 
 
-kernel:
+.FORCE:
+
+kernel: .FORCE
 	make -C cmake-build-debug kernel
 	ln -sf cmake-build-debug/kernel kernel
 #	g++ -nostdlib -c -o kernel.o kernel.cpp

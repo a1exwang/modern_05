@@ -1,6 +1,7 @@
 #include <efi.h>
 #include <efilib.h>
 #include <efidef.h>
+#include <stdarg.h>
 
 #include "efiConsoleControl.h"
 #include "efiUgaDraw.h"
@@ -145,66 +146,211 @@ uint64_t get_cs() {
 }
 
 char KernelData[1024*1024];
+#define Elf64_Addr uint64_t
+#define Elf64_Half uint16_t
+#define Elf64_Off uint64_t
+#define Elf64_Sword int32_t
+#define Elf64_Word uint32_t
+#define Elf64_Xword uint64_t
+#define Elf64_Sxord int64_t
 
+#define EI_NIDENT 16
+typedef struct {
+  unsigned char e_ident[EI_NIDENT];
+  Elf64_Half e_type;
+  Elf64_Half e_machine;
+  Elf64_Word e_version;
+  Elf64_Addr e_entry;
+  Elf64_Off e_phoff;
+  Elf64_Off e_shoff;
+  Elf64_Word e_flags;
+  Elf64_Half e_ehsize;
+  Elf64_Half e_phentsize;
+  Elf64_Half e_phnum;
+  Elf64_Half e_shentsize;
+  Elf64_Half e_shnum;
+  Elf64_Half e_shstrndx;
+} Elf64_Ehdr;
 
+#define ELFCLASS64 2
+typedef struct {
+  Elf64_Word sh_name;
+  Elf64_Word sh_type;
+  Elf64_Word sh_flags;
+  Elf64_Addr sh_addr;
+  Elf64_Off sh_offset;
+  Elf64_Word sh_size;
+  Elf64_Word sh_link;
+  Elf64_Word sh_info;
+  Elf64_Word sh_addralign;
+  Elf64_Word sh_entsize;
+} Elf64_Shdr;
+
+void efi_assert(int expr, const CHAR16 *s, ...) {
+  va_list vl;
+  va_start(vl, s);
+  if (expr == 0) {
+    VPrint(s, vl);
+  }
+  va_end(vl);
+}
+
+typedef struct {
+  Elf64_Word p_type;
+  Elf64_Word p_flags;
+  Elf64_Off p_offset;
+  Elf64_Addr p_vaddr;
+  Elf64_Addr p_paddr;
+  Elf64_Xword p_filesz;
+  Elf64_Xword p_memsz;
+  Elf64_Xword p_align;
+} Elf64_Phdr;
+
+#define PT_LOAD 1
+
+void copy(char *target, char *src, uint64_t size) {
+  for (uint64_t i = 0; i < size; i++) {
+    target[i] = src[i];
+  }
+}
+
+// buffer contains the elf file
+int LoadKernel(char *buffer, uint64_t buffer_size) {
+  Elf64_Ehdr *ehdr = buffer;
+  const char *ElfMagic = "\x7f" "ELF";
+  for (int i = 0; i < 4; i++) {
+    if (ElfMagic[i] != buffer[i]) {
+      Print(L"Corrupted ELF file, invalid header magic %x, %x, i = %d\n", (uint32_t)ElfMagic[i], (uint32_t)buffer[i], i);
+      return 1;
+    }
+  }
+
+  efi_assert(ehdr->e_phoff, L"program header table not found\n");
+  Print(L"%d sections at 0x%08x\n", ehdr->e_phnum, ehdr->e_phoff);
+  for (int i = 0; i < ehdr->e_phnum; i++) {
+    Elf64_Phdr *phdr = (buffer + ehdr->e_phoff + ehdr->e_phentsize * i);
+    if (phdr->p_type == PT_LOAD && phdr->p_memsz > 0) {
+      Print(L"0x%0lx 0x%0lx 0x%0lx 0x%0lx\n", phdr->p_offset, phdr->p_filesz, phdr->p_vaddr, phdr->p_memsz);
+      if (phdr->p_filesz <= phdr->p_memsz) {
+
+        copy(phdr->p_vaddr, buffer + phdr->p_offset, phdr->p_memsz);
+      } else {
+        Print(L"Don't know how to load sections that has filesize > memsize");
+        return 1;
+      }
+    }
+  }
+  typedef void (*EntrypoinFunc)();
+  EntrypoinFunc entrypoint = ehdr->e_entry;
+  Print(L"Kernel start: ");
+  for (int i = 0; i < 16; i++) {
+    Print(L"%02x ", (int)((unsigned char*)entrypoint)[i]);
+  }
+  Print(L"\ngoint to kernel at 0x%lx\n", entrypoint);
+  entrypoint();
+  return 0;
+}
+
+void hello() {
+  Print(L"Kernel hello\n");
+}
 
 char memoryDescriptors[1024*4] = {0};
 EFI_STATUS
 efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
-   InitializeLib(ImageHandle, SystemTable);
-   Print(L"Hello, world!\n");
-   UINTN memoryMapSize = sizeof(memoryDescriptors);
-   UINTN mapKey;
-   UINTN descriptorSize;
-   UINT32 descriptorVersion;
-   EFI_STATUS st = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &memoryDescriptors[0], &mapKey, &descriptorSize, &descriptorVersion);
-   if (st != EFI_SUCCESS) {
-     Print(L"Failed to GetMemoryMap 0x%lx\n", st);
-     return st;
-   }
-   Print(L"Descriptor version/size/count/mapkey: 0x%lx/0x%lx/0x%lx/0x%lx\n", descriptorVersion, descriptorSize, memoryMapSize / descriptorSize, mapKey);
-  struct EFIServicesInfo *p = (struct EFIServicesInfo*)EFIServiceInfoAddress;
-   for (int i = 0; i < memoryMapSize / descriptorSize; i++) {
-     EFI_MEMORY_DESCRIPTOR *md = (memoryDescriptors + descriptorSize*i);
-     if (md->Type != EfiReservedMemoryType) {
-       if (md->Type == EfiConventionalMemory && md->PhysicalStart == 0x100000) {
-         Print(L"Conventional memory region\n");
-         Print(L"0x%02lx 0x%08lx 0x%016lx 0x%016lx 0x%08lx 0x%08lx\n",
-               md->Type,
-               md->Pad,
-               md->PhysicalStart,
-               md->VirtualStart,
-               md->NumberOfPages,
-               md->Attribute);
-         p->phy_size = md->NumberOfPages * 4096;
-       }
-     }
-   }
+  InitializeLib(ImageHandle, SystemTable);
+  Print(L"Hello, world!\n");
+  UINTN memoryMapSize = sizeof(memoryDescriptors);
+  UINTN mapKey;
+  UINTN descriptorSize;
+  UINT32 descriptorVersion;
+  EFI_STATUS st = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &memoryDescriptors[0], &mapKey, &descriptorSize, &descriptorVersion);
+  if (st != EFI_SUCCESS) {
+    Print(L"Failed to GetMemoryMap 0x%lx\n", st);
+    return st;
+  }
+  Print(L"Descriptor version/size/count/mapkey: 0x%lx/0x%lx/0x%lx/0x%lx\n", descriptorVersion, descriptorSize, memoryMapSize / descriptorSize, mapKey);
+  struct EFIServicesInfo *services_info = (struct EFIServicesInfo*)EFIServiceInfoAddress;
+  for (int i = 0; i < memoryMapSize / descriptorSize; i++) {
+    EFI_MEMORY_DESCRIPTOR *md = (memoryDescriptors + descriptorSize*i);
+    if (md->Type != EfiReservedMemoryType) {
+      if (md->Type == EfiConventionalMemory && md->PhysicalStart == 0x100000) {
+        Print(L"Conventional memory region\n");
+        Print(L"0x%02lx 0x%08lx 0x%016lx 0x%016lx 0x%08lx 0x%08lx\n",
+              md->Type,
+              md->Pad,
+              md->PhysicalStart,
+              md->VirtualStart,
+              md->NumberOfPages,
+              md->Attribute);
+        services_info->phy_size = md->NumberOfPages * 4096;
+      }
+    }
+  }
 
 //   egInitScreen();
 //   Print(L"Screen initialized %lux%lu\n", egScreenWidth, egScreenHeight);
 //   egClearScreen();
 
-   uint64_t result = get_cs();
-   Print(L"cs: %04lx\n", result);
+  uint64_t result = get_cs();
+  Print(L"cs: %04lx\n", result);
 
-   EFI_STATUS status = LibLocateProtocol(&SimpleFileSystemProtocolGuid, (VOID**)&SimpleFileSystem);
-   EFI_FILE_PROTOCOL *File;
-   efi_call2(SimpleFileSystem->OpenVolume,SimpleFileSystem, &File);
+  EFI_STATUS status = LibLocateProtocol(&SimpleFileSystemProtocolGuid, (VOID**)&SimpleFileSystem);
+  EFI_FILE_PROTOCOL *File;
+  status = efi_call2(SimpleFileSystem->OpenVolume,SimpleFileSystem, &File);
+  if (status != EFI_SUCCESS) {
+    Print(L"Failed to open volume 0x%lx\n", status);
+    return 1;
+  }
+  uint64_t BufferSize = 1048576 * 10;
+  unsigned char*Buffer = 0x101000;
 
-   EFI_FILE_PROTOCOL *FileHandle;
-   status = efi_call5(File->Open, File, &FileHandle, L"kernel", EFI_FILE_MODE_READ, 0);
-   if (status != EFI_SUCCESS) {
-     Print(L"Failed to open kernel file\n");
-     return 1;
-   }
-   uint64_t BufferSize = 1048576 * 10;
-   char *Buffer = 0x200000 + BufferSize;
-   status = efi_call3(File->Read, File, &BufferSize, Buffer);
-   if (status != EFI_SUCCESS) {
-     Print(L"Failed to read kernel file st=%ld\n", status);
-     return 1;
-   }
-   Print(L"Kernel file size 0x%0lx\n", BufferSize);
+  // Get File system info
+  EFI_GUID infoid = EFI_FILE_SYSTEM_INFO_ID;
+  uint64_t GetInfoBufferSize = BufferSize;
+  status = efi_call4(File->GetInfo, File, &infoid, &GetInfoBufferSize, Buffer);
+  if (status != EFI_SUCCESS) {
+    Print(L"Failed to getInfo 0x%lx\n", status);
+    return 1;
+  }
+
+  EFI_FILE_SYSTEM_INFO  *fs_info = Buffer;
+  Print(L"VolumeSize=0x%0lx, FreeSpace:0x%0lx, BlockSize=0x%0x, Label=%s\n", fs_info->VolumeSize, fs_info->FreeSpace, fs_info->BlockSize, fs_info->VolumeLabel);
+
+  EFI_FILE_PROTOCOL *FileHandle;
+  status = efi_call5(File->Open, File, &FileHandle, L"kernel", EFI_FILE_MODE_READ, 0);
+  if (status != EFI_SUCCESS) {
+    Print(L"Failed to open kernel file\n");
+    return 1;
+  }
+
+  EFI_GUID file_info_id = EFI_FILE_INFO_ID;
+  uint64_t GetFileInfoBufferSize = BufferSize;
+  status = efi_call4(File->GetInfo, FileHandle, &file_info_id, &GetFileInfoBufferSize, Buffer);
+  if (status != EFI_SUCCESS) {
+    Print(L"Failed to get file info 0x%lx\n", status);
+    return 1;
+  }
+
+  EFI_FILE_INFO  *f_info = Buffer;
+  Print(L"Size=0x%0lx, Name='%s'\n", f_info->FileSize, f_info->FileName);
+
+
+  // read file
+  status = efi_call3(File->Read, FileHandle, &BufferSize, Buffer);
+  if (status != EFI_SUCCESS) {
+    Print(L"Failed to read kernel file st=%ld\n", status);
+    return 1;
+  }
+  Print(L"Kernel file size 0x%0lx\n", BufferSize);
+
+//  status = SystemTable->BootServices->ExitBootServices(ImageHandle, mapKey);
+//  if (status != EFI_SUCCESS) {
+//    Print(L"Failed to ExitBootService 0x%lx\n", status);
+//    return 1;
+//  }
+
+  services_info->func = hello;
+  LoadKernel(Buffer, BufferSize);
   return EFI_SUCCESS;
 }
