@@ -60,6 +60,9 @@ static EFI_LOAD_FILE_PROTOCOL *LoadFile = NULL;
 static EFI_GUID SimpleFileSystemProtocolGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
 static EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *SimpleFileSystem = NULL;
 
+static EFI_GUID SimpleTextOutProtocolGuid = EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL_GUID;
+static EFI_SIMPLE_TEXT_OUT_PROTOCOL *TextOut = NULL;
+
 static EFI_GET_MEMORY_MAP EfiGetMemoryMap;
 
 static BOOLEAN egHasGraphics = FALSE;
@@ -215,7 +218,8 @@ void copy(char *target, char *src, uint64_t size) {
 }
 
 // buffer contains the elf file
-int LoadKernel(char *buffer, uint64_t buffer_size) {
+typedef void (*EntrypointFunc)();
+EntrypointFunc LoadKernel(char *buffer, uint64_t buffer_size) {
   Elf64_Ehdr *ehdr = buffer;
   const char *ElfMagic = "\x7f" "ELF";
   for (int i = 0; i < 4; i++) {
@@ -240,35 +244,53 @@ int LoadKernel(char *buffer, uint64_t buffer_size) {
       }
     }
   }
-  typedef void (*EntrypoinFunc)();
-  EntrypoinFunc entrypoint = ehdr->e_entry;
+  EntrypointFunc entrypoint = ehdr->e_entry;
   Print(L"Kernel start: ");
   for (int i = 0; i < 16; i++) {
     Print(L"%02x ", (int)((unsigned char*)entrypoint)[i]);
   }
-  Print(L"\ngoint to kernel at 0x%lx\n", entrypoint);
-  entrypoint();
-  return 0;
+  Print(L"\ngoing to kernel at 0x%lx\n", entrypoint);
+  return entrypoint;
 }
 
 void hello() {
   Print(L"Kernel hello\n");
 }
 
+void my_print(const uint16_t *fmt, ...) {
+  efi_call2(TextOut->OutputString, TextOut, fmt);
+  efi_call2(TextOut->OutputString, TextOut, L"\r\n");
+
+}
+
 char memoryDescriptors[1024*4] = {0};
 EFI_STATUS
 efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   InitializeLib(ImageHandle, SystemTable);
+
+
+  // init console
+  EFI_STATUS st = LibLocateProtocol(&TextOutProtocol, (VOID **) &TextOut);
+  if (EFI_ERROR(st)) {
+    Print(L"Failed to get SIMPLE TEXT OUT PROTOCOL\n");
+    return st;
+  }
+  efi_call2(TextOut->OutputString, TextOut, L"TextOut->OutputString()\r\n");
+
+
   Print(L"Hello, world!\n");
   UINTN memoryMapSize = sizeof(memoryDescriptors);
   UINTN mapKey;
   UINTN descriptorSize;
   UINT32 descriptorVersion;
-  EFI_STATUS st = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &memoryDescriptors[0], &mapKey, &descriptorSize, &descriptorVersion);
+  st = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &memoryDescriptors[0], &mapKey, &descriptorSize, &descriptorVersion);
   if (st != EFI_SUCCESS) {
     Print(L"Failed to GetMemoryMap 0x%lx\n", st);
     return st;
   }
+
+//  efi_call2(TextOut->OutputString, TextOut, L"ExitBootService() done\r\n");
+
   Print(L"Descriptor version/size/count/mapkey: 0x%lx/0x%lx/0x%lx/0x%lx\n", descriptorVersion, descriptorSize, memoryMapSize / descriptorSize, mapKey);
   struct EFIServicesInfo *services_info = (struct EFIServicesInfo*)EFIServiceInfoAddress;
   for (int i = 0; i < memoryMapSize / descriptorSize; i++) {
@@ -350,7 +372,26 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
 //    return 1;
 //  }
 
-  services_info->func = hello;
-  LoadKernel(Buffer, BufferSize);
+  EntrypointFunc entrypoint = LoadKernel(Buffer, BufferSize);
+
+  {
+
+    UINTN memoryMapSize = sizeof(memoryDescriptors);
+    UINTN mapKey;
+    UINTN descriptorSize;
+    UINT32 descriptorVersion;
+    status = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &memoryDescriptors[0], &mapKey, &descriptorSize, &descriptorVersion);
+    if (status != EFI_SUCCESS) {
+      Print(L"Failed to GetMemoryMap the second time 0x%lx\n", status);
+      return status;
+    }
+    status = efi_call2(SystemTable->BootServices->ExitBootServices, ImageHandle, mapKey);
+    if (status != EFI_SUCCESS) {
+      Print(L"Failed to ExitBootServices 0x%lx\n", status);
+      return status;
+    }
+  }
+
+  entrypoint();
   return EFI_SUCCESS;
 }

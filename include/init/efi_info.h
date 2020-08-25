@@ -2,11 +2,14 @@
 
 #include <lib/defs.h>
 
-typedef void (*HelloFunc)();
+#ifdef __cplusplus
+typedef u64 (*print_function)(const wchar_t *fmt, ...);
+#else
+typedef u64 (*print_function)(const u16 *fmt, ...);
+#endif
 #pragma pack(push, 1)
 struct EFIServicesInfo {
   u64 phy_size;
-  HelloFunc func;
 };
 #pragma pack(pop)
 
