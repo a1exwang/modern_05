@@ -137,8 +137,8 @@ SerialPort &operator<<(SerialPort &serial_port, T n) {
       remain = newRemain;
     }
     while (i > 0) {
-      serial_port.put(temp[i]);
       i--;
+      serial_port.put(temp[i]);
     }
   }
   return serial_port;
@@ -200,12 +200,9 @@ class Kernel {
     halt();
   }
   void print_regs() {
-    PRINT_REG(u32, cs);
-    PRINT_REG(u32, ds);
-    PRINT_REG(u32, ss);
-    PRINT_REG(u32, es);
-    PRINT_REG(u32, fs);
-    PRINT_REG(u32, gs);
+    PRINT_REG(u16, cs);
+    PRINT_REG(u16, fs);
+    PRINT_REG(u16, gs);
 
     PRINT_REG(u64, rax);
     PRINT_REG(u64, rcx);
