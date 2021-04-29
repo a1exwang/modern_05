@@ -181,6 +181,46 @@ static bool is_page_present(u64 page_table_entry) {
     serial_port_ << #name " = 0x" << SerialPort::IntRadix::Hex << reg_##name << "\n"; \
   } while (0)
 
+#pragma pack(push, 1)
+struct SegmentDescriptor {
+  u16 segment_limit_lo16;
+  u16 base_addr_lo16;
+  u8 base_addr_mid8;
+
+  u8 accessed : 1;
+  u8 wr : 1;
+  u8 dc : 1;
+  u8 exec : 1;
+  u8 reserved : 1;
+  u8 dpl : 2;
+  u8 present : 1;
+
+  u8 segment_limit_hi4 : 4;
+
+  u8 avl : 1;
+  u8 long_mode : 1;
+  u8 default_operand_size : 1;
+  u8 granularity : 1;
+
+  u8 base_addr_hi8;
+};
+#pragma pack(pop)
+
+void print_segment_descriptor(SerialPort &serial_port, u16 selector, void *gdt) {
+  auto &desc = *reinterpret_cast<const SegmentDescriptor*>((char*)gdt+ (selector & 0xfff8));
+
+  serial_port << "Segment descriptor 0x" << SerialPort::IntRadix::Hex << selector << " ";
+  u32 base_addr = (u32)desc.base_addr_lo16 | ((u32)desc.base_addr_mid8 << 16) | ((u32)desc.base_addr_hi8 << 24);
+
+//  serial_port << "  base_addr 0x" << SerialPort::IntRadix::Hex << base_addr;
+  serial_port << "dpl " << SerialPort::IntRadix::Hex << desc.dpl << " ";
+
+//  serial_port << "  avl 0x" << SerialPort::IntRadix::Hex << desc.dpl;
+  serial_port << "long_mode " << SerialPort::IntRadix::Hex << desc.long_mode << " ";
+  serial_port << "default_operand_size " << SerialPort::IntRadix::Hex << desc.default_operand_size << "\n";
+//  serial_port << "  granularity 0x" << SerialPort::IntRadix::Hex << desc.granularity;
+}
+
 class Kernel {
  public:
   static Kernel *k;
@@ -199,6 +239,19 @@ class Kernel {
     serial_port_ << "Kernel panic: '" << s << "'\n";
     halt();
   }
+
+  std::tuple<void*, u16> get_gdt() {
+    u8 gdtr[10];
+    __asm__ __volatile__("sgdt %0"
+      :"=m"(gdtr)
+      :
+      :"memory");
+
+    u16 limit = *(u16*)&gdtr[0];
+    void* offset = (void*)*(u64*)&gdtr[2];
+    return std::make_tuple(offset, limit);
+  }
+
   void print_regs() {
     PRINT_REG(u16, cs);
     PRINT_REG(u16, fs);
@@ -212,6 +265,15 @@ class Kernel {
     PRINT_REG(u64, cr0);
     PRINT_REG(u64, cr3);
     PRINT_REG(u64, cr4);
+
+    auto [gdt_addr, _] = get_gdt();
+    serial_port_ << "GDT address = 0x" << SerialPort::IntRadix::Hex << (u64)gdt_addr << '\n';
+
+    u16 cs = 0;
+    asm volatile("mov %%cs ,%0" : "=r" (cs));
+    print_segment_descriptor(serial_port_, cs, gdt_addr);
+
+
 
     u64 cr3 = 0;
     asm volatile("mov %%cr3,%0" : "=r" (cr3));
