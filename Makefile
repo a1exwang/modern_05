@@ -1,7 +1,7 @@
 ARCH            = $(shell uname -m | sed s,i[3456789]86,ia32,)
 
-OBJS            = main.o
-TARGET          = hello.efi
+OBJS            = boot_loader.o
+TARGET          = boot_loader.efi
 
 EFIINC          = /usr/include/efi
 EFIINCS         = -I$(EFIINC) -I$(EFIINC)/$(ARCH) -I$(EFIINC)/protocol
@@ -27,6 +27,7 @@ boot_loader.so: $(OBJS)
 
 .FORCE:
 
+# use cmake to enable IDE
 kernel: .FORCE
 	make -C cmake-build-debug kernel
 	ln -sf cmake-build-debug/kernel kernel

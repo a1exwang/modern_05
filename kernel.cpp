@@ -174,13 +174,20 @@ static bool is_page_present(u64 page_table_entry) {
   return page_table_entry & 0x1u;
 }
 
+#define PRINT_REG(type, name) \
+  do {                      \
+    type reg_##name = 0; \
+    asm volatile("mov %%" #name ",%0" : "=r" (reg_##name)); \
+    serial_port_ << #name " = 0x" << SerialPort::IntRadix::Hex << reg_##name << "\n"; \
+  } while (0)
+
 class Kernel {
  public:
   static Kernel *k;
   void start() {
     SerialPort port;
     port << "Hello from kernel! \n";
-    print_control_registers();
+    print_regs();
     panic("kernel exits normally");
   }
 
@@ -192,19 +199,25 @@ class Kernel {
     serial_port_ << "Kernel panic: '" << s << "'\n";
     halt();
   }
-  void print_control_registers() {
-    u64 cr0 = 0;
-    asm volatile("mov %%cr0,%0" : "=r" (cr0));
-    serial_port_ << "cr0 = 0x" << SerialPort::IntRadix::Hex << cr0 << "\n";
+  void print_regs() {
+    PRINT_REG(u32, cs);
+    PRINT_REG(u32, ds);
+    PRINT_REG(u32, ss);
+    PRINT_REG(u32, es);
+    PRINT_REG(u32, fs);
+    PRINT_REG(u32, gs);
+
+    PRINT_REG(u64, rax);
+    PRINT_REG(u64, rcx);
+    PRINT_REG(u64, rdx);
+    PRINT_REG(u64, rbx);
+
+    PRINT_REG(u64, cr0);
+    PRINT_REG(u64, cr3);
+    PRINT_REG(u64, cr4);
 
     u64 cr3 = 0;
     asm volatile("mov %%cr3,%0" : "=r" (cr3));
-    serial_port_ << "cr3 = 0x" << SerialPort::IntRadix::Hex << cr3 << "\n";
-
-    u64 cr4 = 0;
-    asm volatile("mov %%cr4,%0" : "=r" (cr4));
-    serial_port_ << "cr4 = 0x" << SerialPort::IntRadix::Hex << cr4 << "\n";
-
     auto pml4t = reinterpret_cast<const u64*>(cr3 & 0xfffffffffffff000);
     // 9 | 9 | 9 | 9 | 12
     u64 total_pages = 0;
