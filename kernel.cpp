@@ -3,6 +3,8 @@
 #include <tuple>
 #include <type_traits>
 
+#define IA32_APIC_BASE_MSR 0x1B
+
 void outb(u16 address, u8 data) {
   asm (
   "mov %1, %%al\n"
@@ -24,6 +26,15 @@ u8 inb(u16 address) {
   : "%dx", "%al"
   );
   return result;
+}
+
+u64 cpuGetMSR(u32 msr) {
+  u64 result;
+  asm volatile("rdmsr" : "=a"(*(u32*)&result), "=d"(*(u32*)((char*)&result+4)) : "c"(msr));
+}
+
+void cpuSetMSR(u32 msr, u64 value) {
+  asm volatile("wrmsr" : : "a"(value & 0xffffffff), "d"(value >> 32), "c"(msr));
 }
 
 /**
@@ -204,6 +215,32 @@ struct SegmentDescriptor {
 
   u8 base_addr_hi8;
 };
+
+enum DescriptorType {
+  LongLDT = 0x2,
+  LongAvailableTSS = 0x9,
+  LongBusyTSS = 0xb,
+  LongCallGate = 0xc,
+  LongInterruptGate = 0xe,
+  LongTrapGate = 0xf,
+};
+
+struct InterruptDescriptor {
+  u16 offset_lo16;
+  u16 selector;
+
+  u8 ist : 4;
+  u8 zero : 4;
+  u8 type : 4;
+
+  u8 zero2 : 1;
+  u8 dpl : 2;
+  u8 p : 1;
+
+  u16 offset_mid16;
+  u32 offset_hi32;
+  u32 zero3;
+};
 #pragma pack(pop)
 
 void print_segment_descriptor(SerialPort &serial_port, u16 selector, void *gdt) {
@@ -213,12 +250,18 @@ void print_segment_descriptor(SerialPort &serial_port, u16 selector, void *gdt) 
   u32 base_addr = (u32)desc.base_addr_lo16 | ((u32)desc.base_addr_mid8 << 16) | ((u32)desc.base_addr_hi8 << 24);
 
 //  serial_port << "  base_addr 0x" << SerialPort::IntRadix::Hex << base_addr;
-  serial_port << "dpl " << SerialPort::IntRadix::Hex << desc.dpl << " ";
+  serial_port << " dpl " << SerialPort::IntRadix::Hex << desc.dpl << " ";
 
 //  serial_port << "  avl 0x" << SerialPort::IntRadix::Hex << desc.dpl;
   serial_port << "long_mode " << SerialPort::IntRadix::Hex << desc.long_mode << " ";
   serial_port << "default_operand_size " << SerialPort::IntRadix::Hex << desc.default_operand_size << "\n";
 //  serial_port << "  granularity 0x" << SerialPort::IntRadix::Hex << desc.granularity;
+}
+
+void print_idt_descriptor(SerialPort &serial_port, u16 index, const InterruptDescriptor *desc) {
+  serial_port << "Interrupt descriptor 0x" << SerialPort::IntRadix::Hex << index << " ";
+  u64 offset = desc->offset_lo16 | ((u64)desc->offset_mid16 << 16) | ((u64)desc->offset_hi32 << 32);
+  serial_port << "present " << desc->p << SerialPort::IntRadix::Hex << " offset 0x" << offset << " selector 0x" << desc->selector << " type 0x" << desc->type << " dpl " << desc->dpl << "\n";
 }
 
 class Kernel {
@@ -252,6 +295,18 @@ class Kernel {
     return std::make_tuple(offset, limit);
   }
 
+  std::tuple<void*, u16> get_idt() {
+    u8 idtr[10];
+    __asm__ __volatile__("sidt %0"
+    :"=m"(idtr)
+    :
+    :"memory");
+
+    u16 limit = *(u16*)&idtr[0];
+    void* offset = (void*)*(u64*)&idtr[2];
+    return std::make_tuple(offset, limit);
+  }
+
   void print_regs() {
     PRINT_REG(u16, cs);
     PRINT_REG(u16, fs);
@@ -261,6 +316,20 @@ class Kernel {
     PRINT_REG(u64, rcx);
     PRINT_REG(u64, rdx);
     PRINT_REG(u64, rbx);
+    PRINT_REG(u64, rsi);
+    PRINT_REG(u64, rdi);
+    PRINT_REG(u64, rbp);
+    PRINT_REG(u64, rsp);
+    u64 rflags = 0;
+    __asm __volatile(
+    "pushf\n"
+    "pop %0\n"
+    :"=m"(rflags)
+    :
+    :"memory"
+    );
+
+    serial_port_ << "rflags = 0x" << SerialPort::IntRadix::Hex << rflags << "\n"; \
 
     PRINT_REG(u64, cr0);
     PRINT_REG(u64, cr3);
@@ -273,7 +342,12 @@ class Kernel {
     asm volatile("mov %%cs ,%0" : "=r" (cs));
     print_segment_descriptor(serial_port_, cs, gdt_addr);
 
-
+    auto [idt_addr, idt_size] = get_idt();
+    serial_port_ << "IDT address = 0x" << SerialPort::IntRadix::Hex << (u64)idt_addr << " limit 0x" << idt_size << '\n';
+    for (u32 i = 0; i < 256; i++) {
+      auto idt = reinterpret_cast<InterruptDescriptor *>(idt_addr);
+      print_idt_descriptor(serial_port_, i, &idt[i]);
+    }
 
     u64 cr3 = 0;
     asm volatile("mov %%cr3,%0" : "=r" (cr3));
@@ -301,6 +375,8 @@ class Kernel {
       }
     }
     serial_port_ << "total pages: 0x" << SerialPort::IntRadix::Hex << total_pages << '\n';
+
+    void* apic_base = (void*)cpuGetMSR(IA32_APIC_BASE_MSR);
   }
 
 
