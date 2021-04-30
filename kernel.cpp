@@ -5,6 +5,12 @@
 
 #define IA32_APIC_BASE_MSR 0x1B
 
+void memset(void *data, u8 value, u64 size) {
+  for (u64 i = 0; i < size; i++) {
+    ((u8*)data)[i] = value;
+  }
+}
+
 void outb(u16 address, u8 data) {
   asm (
   "mov %1, %%al\n"
@@ -31,11 +37,14 @@ u8 inb(u16 address) {
 u64 cpuGetMSR(u32 msr) {
   u64 result;
   asm volatile("rdmsr" : "=a"(*(u32*)&result), "=d"(*(u32*)((char*)&result+4)) : "c"(msr));
+  return result;
 }
 
 void cpuSetMSR(u32 msr, u64 value) {
   asm volatile("wrmsr" : : "a"(value & 0xffffffff), "d"(value >> 32), "c"(msr));
 }
+
+extern "C" void _default_irq_handler();
 
 /**
  * COM serial port
@@ -243,6 +252,39 @@ struct InterruptDescriptor {
 };
 #pragma pack(pop)
 
+InterruptDescriptor main_idt[256];
+
+void set_idt_offset(InterruptDescriptor *desc, void* ptr) {
+  desc->offset_lo16 = (u64)ptr & 0xffff;
+  desc->offset_mid16 = ((u64)(ptr) >> 16) & 0xffff;
+  desc->offset_hi32 = ((u64)(ptr) >> 32) & 0xffffffff;
+}
+
+extern "C" void _de_irq_handler();
+extern "C" void _db_irq_handler();
+extern "C" void _nmi_irq_handler();
+extern "C" void _bp_irq_handler();
+
+extern "C" void _timer_irq_handler();
+
+void setup_idt(u16 selector, void *default_handler) {
+  memset(main_idt, 0, sizeof(main_idt));
+
+  for (int i = 0; i < sizeof(main_idt) / sizeof(main_idt[0]); i++) {
+    set_idt_offset(&main_idt[i], default_handler);
+
+    main_idt[i].selector = selector;
+    main_idt[i].type = DescriptorType::LongInterruptGate;
+    main_idt[i].dpl = 0;
+    main_idt[i].p = 1;
+  }
+  set_idt_offset(&main_idt[0], (void*)&_de_irq_handler);
+  set_idt_offset(&main_idt[1], (void*)&_db_irq_handler);
+  set_idt_offset(&main_idt[2], (void*)&_nmi_irq_handler);
+  set_idt_offset(&main_idt[3], (void*)&_bp_irq_handler);
+  set_idt_offset(&main_idt[32], (void*)&_timer_irq_handler);
+}
+
 void print_segment_descriptor(SerialPort &serial_port, u16 selector, void *gdt) {
   auto &desc = *reinterpret_cast<const SegmentDescriptor*>((char*)gdt+ (selector & 0xfff8));
 
@@ -275,7 +317,8 @@ class Kernel {
   }
 
   void halt() {
-    asm volatile ("hlt");
+    while (true) ;
+    //asm volatile ("hlt");
   }
 
   void panic(const char *s) {
@@ -305,6 +348,18 @@ class Kernel {
     u16 limit = *(u16*)&idtr[0];
     void* offset = (void*)*(u64*)&idtr[2];
     return std::make_tuple(offset, limit);
+  }
+
+  void load_idt(std::tuple<void*, u16> idtr_input) {
+    u8 idtr[10];
+    auto [offset, limit] = idtr_input;
+
+    *(u16*)&idtr[0] = limit;
+    *(u64*)&idtr[2] = (u64)offset;
+    __asm__ __volatile__("lidt %0"
+    :
+    :"m"(idtr)
+    :"memory");
   }
 
   void print_regs() {
@@ -376,11 +431,16 @@ class Kernel {
     }
     serial_port_ << "total pages: 0x" << SerialPort::IntRadix::Hex << total_pages << '\n';
 
+    setup_idt(cs, (void*)&_default_irq_handler);
+
+    load_idt(std::make_tuple<void*, u16>(main_idt, 0xfff));
+    __asm__ __volatile__("int $32");
+
     void* apic_base = (void*)cpuGetMSR(IA32_APIC_BASE_MSR);
+    serial_port_ << "APIC base: 0x" << SerialPort::IntRadix::Hex << (u64)apic_base << '\n';
   }
 
-
- private:
+ public:
   SerialPort serial_port_;
 };
 Kernel *Kernel::k;
@@ -393,4 +453,18 @@ void kernel_start() {
   Kernel kernel;
   Kernel::k = &kernel;
   kernel.start();
+}
+
+extern "C" void timer_irq_handler() {
+  Kernel::k->serial_port_ << "Timer IRQ " << "\n";
+}
+
+extern "C" void irq_handler(u64 irq_num, u64 error_code) {
+  Kernel::k->serial_port_ << "IRQ = " << irq_num << " error = " << error_code << "\n";
+  if (irq_num == 32) {
+    timer_irq_handler();
+    u64 esp;
+    register u64 esp_val asm("esp");
+    Kernel::k->serial_port_ << "esp = " << esp_val << "\n";
+  }
 }
