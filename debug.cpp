@@ -24,7 +24,7 @@ void print_segment_descriptor(SerialPort &serial_port, u16 selector, void *gdt) 
 //  serial_port << "  granularity 0x" << SerialPort::IntRadix::Hex << desc.granularity;
 }
 
-void debug_init() {
+void dump_all() {
 
   PRINT_REG(u16, cs);
   PRINT_REG(u16, fs);
@@ -66,4 +66,9 @@ void debug_init() {
     auto idt = reinterpret_cast<InterruptDescriptor *>(idt_addr);
     //print_idt_descriptor(serial_port_, i, &idt[i]);
   }
+
+}
+
+void debug_init() {
+  dump_all();
 }

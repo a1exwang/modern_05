@@ -5,6 +5,30 @@
 .global _timer_irq_handler
 .global _default_irq_handler
 .global irq_handler
+.global _schedule
+
+# context from %rdi
+_schedule:
+    mov %rdi, %rsp
+
+    pop %r15
+    pop %r14
+    pop %r13
+    pop %r12
+    pop %r11
+    pop %r10
+    pop %r9
+    pop %r8
+    pop %rbp
+    pop %rsi
+    pop %rdi
+    pop %rbx
+    pop %rdx
+    pop %rcx
+    pop %rax
+
+    add $16, %rsp
+    iretq
 
 _irq_handler:
     push %rax
@@ -25,26 +49,8 @@ _irq_handler:
 
     movq 120(%rsp), %rdi
     movq 128(%rsp), %rsi
+    mov %rsp, %rdx
     call irq_handler
-
-    pop %r15
-    pop %r14
-    pop %r13
-    pop %r12
-    pop %r11
-    pop %r10
-    pop %r9
-    pop %r8
-    pop %rbp
-    pop %rsi
-    pop %rdi
-    pop %rbx
-    pop %rdx
-    pop %rcx
-    pop %rax
-
-    add $16, %rsp
-    iretq
 
 # divide by 0
 _de_irq_handler:
@@ -89,3 +95,4 @@ _default_irq_handler:
     pushq $0xff
 
     jmp _irq_handler
+

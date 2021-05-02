@@ -23,6 +23,7 @@ void kernel_start() {
   Kernel::k = &kernel;
   kernel.start();
 }
+void thread_start();
 
 void Kernel::start() {
   SerialPort port;
@@ -31,8 +32,9 @@ void Kernel::start() {
   debug_init();
   mm_init();
   irq_init();
+  thread_start();
 
-  panic("kernel exits normally");
+  panic("ERROR: kernel::start() should not return, but it returns");
 }
 void Kernel::panic(const char *s) {
   serial_port_ << "Kernel panic: '" << s << "'\n";
