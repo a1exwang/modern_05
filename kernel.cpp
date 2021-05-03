@@ -38,5 +38,6 @@ void Kernel::start() {
 }
 void Kernel::panic(const char *s) {
   serial_port_ << "Kernel panic: '" << s << "'\n";
+  dump_all();
   halt();
 }

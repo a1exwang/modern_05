@@ -2,10 +2,25 @@
 .global _nmi_irq_handler
 .global _db_irq_handler
 .global _bp_irq_handler
+
+.global _of_irq_handler
+.global _br_irq_handler
+.global _ud_irq_handler
+.global _nm_irq_handler
+
+.global _df_irq_handler
+.global _ts_irq_handler
+.global _np_irq_handler
+
+.global _ss_irq_handler
+.global _gp_irq_handler
+
 .global _timer_irq_handler
+.global _syscall_irq_handler
 .global _default_irq_handler
 .global irq_handler
 .global _schedule
+.global _interrupt_stack_bottom
 
 # context from %rdi
 _schedule:
@@ -49,7 +64,7 @@ _irq_handler:
 
     movq 120(%rsp), %rdi
     movq 128(%rsp), %rsi
-    mov %rsp, %rdx
+    movq %rsp, %rdx
     call irq_handler
 
 # divide by 0
@@ -82,9 +97,75 @@ _bp_irq_handler:
     jmp _irq_handler
     iretq
 
+# overflow
+_of_irq_handler:
+    pushq $0
+    pushq $4
+    jmp _irq_handler
+    iretq
+
+# bound-range
+_br_irq_handler:
+    pushq $0
+    pushq $5
+    jmp _irq_handler
+    iretq
+
+# invalid opcode
+_ud_irq_handler:
+    pushq $0
+    pushq $6
+    jmp _irq_handler
+    iretq
+
+# device not available
+_nm_irq_handler:
+    pushq $0
+    pushq $7
+    jmp _irq_handler
+    iretq
+
+# double fault
+_df_irq_handler:
+    pushq $8
+    jmp _irq_handler
+    iretq
+
+# invalid tss
+_ts_irq_handler:
+    pushq $10
+    jmp _irq_handler
+    iretq
+
+# segment not present
+_np_irq_handler:
+    pushq $11
+    jmp _irq_handler
+    iretq
+
+# stack exception
+_ss_irq_handler:
+    pushq $12
+    jmp _irq_handler
+    iretq
+
+# general protection
+_gp_irq_handler:
+    pushq $13
+    jmp _irq_handler
+    iretq
+
 _timer_irq_handler:
     pushq $0
     pushq $32
+
+    jmp _irq_handler
+
+    iretq
+
+_syscall_irq_handler:
+    pushq $0
+    pushq $42
 
     jmp _irq_handler
 

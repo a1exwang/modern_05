@@ -11,7 +11,7 @@ include_directories(include)
 
 add_subdirectory(lib)
 
-add_executable(kernel kernel.cpp mm.cpp irq.S irq.cpp init/init.cpp debug.cpp)
+add_executable(kernel kernel.cpp mm.cpp irq.S irq.cpp init/init.cpp debug.cpp kthread.cpp)
 target_link_libraries(kernel lib)
 
 set_target_properties(kernel PROPERTIES LINK_DEPENDS ${LINKER_SCRIPT})

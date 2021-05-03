@@ -3,6 +3,7 @@
 #include <lib/string.h>
 #include <kernel.h>
 #include "debug.h"
+#include <kthread.h>
 
 extern "C" void _default_irq_handler();
 
@@ -11,30 +12,44 @@ extern "C" void _db_irq_handler();
 extern "C" void _nmi_irq_handler();
 extern "C" void _bp_irq_handler();
 
+extern "C" void _of_irq_handler();
+extern "C" void _br_irq_handler();
+extern "C" void _ud_irq_handler();
+extern "C" void _nm_irq_handler();
+
+extern "C" void _df_irq_handler();
+extern "C" void _ts_irq_handler();
+extern "C" void _np_irq_handler();
+
+extern "C" void _ss_irq_handler();
+extern "C" void _gp_irq_handler();
+
 extern "C" void _timer_irq_handler();
-extern "C" void _schedule(void *);
-void schedule_next_thread();
+extern "C" void _syscall_irq_handler();
 
 InterruptDescriptor main_idt[256];
-u64 current_thread_id = 0;
 
 extern "C" void timer_irq_handler() {
   Kernel::k->serial_port_ << "Timer IRQ " << "\n";
 }
 
-struct ThreadContext;
-void store_current_thread_context(ThreadContext *context);
-extern "C" void irq_handler(u64 irq_num, u64 error_code, ThreadContext *interrupt_stack_top) {
-  Kernel::k->serial_port_ << "IRQ = " << irq_num << " error = " << error_code << " thread = " << current_thread_id << "\n";
+u8 interrupt_stack[4096];
+extern "C" constexpr u8 *_interrupt_stack_bottom = &interrupt_stack[sizeof(interrupt_stack)];
+
+extern "C" void irq_handler(u64 irq_num, u64 error_code, ThreadContext *context) {
   if (irq_num == 32) {
     timer_irq_handler();
     u64 esp;
     register u64 esp_val asm("esp");
     Kernel::k->serial_port_ << "esp = " << esp_val << "\n";
   } else if (irq_num == 42) {
-    store_current_thread_context(interrupt_stack_top);
+    store_current_thread_context(context);
     schedule_next_thread();
   } else {
+    Kernel::k->serial_port_
+        << "IRQ = " << irq_num << " error = " << error_code << " thread = " << current_thread_id << "\n"
+        << "rip = " << context->rip << " rsp = " << context->rsp << "\n";
+
     Kernel::k->panic("unhandled exception");
   }
 }
@@ -60,7 +75,17 @@ void setup_idt(u16 selector, void *default_handler) {
   set_idt_offset(&main_idt[1], (void*)&_db_irq_handler);
   set_idt_offset(&main_idt[2], (void*)&_nmi_irq_handler);
   set_idt_offset(&main_idt[3], (void*)&_bp_irq_handler);
+  set_idt_offset(&main_idt[4], (void*)&_of_irq_handler);
+  set_idt_offset(&main_idt[5], (void*)&_br_irq_handler);
+  set_idt_offset(&main_idt[6], (void*)&_ud_irq_handler);
+  set_idt_offset(&main_idt[7], (void*)&_nm_irq_handler);
+  set_idt_offset(&main_idt[8], (void*)&_df_irq_handler);
+  set_idt_offset(&main_idt[10], (void*)&_ts_irq_handler);
+  set_idt_offset(&main_idt[11], (void*)&_np_irq_handler);
+  set_idt_offset(&main_idt[12], (void*)&_ss_irq_handler);
+  set_idt_offset(&main_idt[13], (void*)&_gp_irq_handler);
   set_idt_offset(&main_idt[32], (void*)&_timer_irq_handler);
+  set_idt_offset(&main_idt[42], (void*)&_syscall_irq_handler);
 }
 
 void print_idt_descriptor(SerialPort &serial_port, u16 index, const InterruptDescriptor *desc) {
@@ -79,117 +104,4 @@ void irq_init() {
 
   void* apic_base = (void*)cpuGetMSR(IA32_APIC_BASE_MSR);
   Kernel::sp() << "APIC base: 0x" << SerialPort::IntRadix::Hex << (u64)apic_base << '\n';
-}
-
-#pragma pack(push, 1)
-struct ThreadContext {
-  u64 r15;
-  u64 r14;
-  u64 r13;
-  u64 r12;
-  u64 r11;
-  u64 r10;
-  u64 r9;
-  u64 r8;
-  u64 rbp;
-  u64 rsi;
-  u64 rdi;
-  u64 rbx;
-  u64 rdx;
-  u64 rcx;
-  u64 rax;
-
-  u64 reserved1[2];
-  u64 rip;
-  u64 cs;
-  u64 rflags;
-  u64 rsp;
-  u64 ss;
-};
-#pragma pack(pop)
-
-using ThreadFunction = void (*)();
-u64 total_threads = 2;
-
-
-class Thread {
- public:
-  Thread(u64 id, u16 code_selector, u16 data_selector, ThreadFunction start) :id(id), start(start) {
-    memset(&context, 0, sizeof(context));
-    context.cs = code_selector;
-    context.ss = data_selector;
-    context.rsp = (u64)stack_bottom;
-    context.rip = (u64)start;
-  }
-
-  void store_context(ThreadContext *old_context) {
-    memcpy(&this->context, old_context, sizeof(ThreadContext));
-  }
- public:
-  u64 id;
-  ThreadFunction start;
-  ThreadContext context;
-  u8 stack[1024 * 1024];
-  u8 stack_bottom[0];
-
-  void schedule() {
-    ::_schedule(&context);
-  }
-};
-
-Thread *main_thread;
-Thread *thread2;
-
-u8 threads_space[256 * sizeof(Thread)];
-
-Thread *get_thread(u64 id) {
-  return &((Thread*)threads_space)[id];
-}
-
-void main_thread_start() {
-  u64 i = 0;
-  while (true) {
-    Kernel::sp() << "main thread run" << "\n";
-    dump_all();
-    __asm__ __volatile__("int $42");
-    dump_all();
-    i++;
-  }
-}
-
-void thread2_start() {
-  u64 i = 0;
-  while (true) {
-    Kernel::sp() << "thread2 run" << "\n";
-//    dump_all();
-
-    __asm__ __volatile__("int $42");
-//    dump_all();
-    i++;
-  }
-}
-
-
-void thread_start() {
-  auto *threads = (Thread*)threads_space;
-  new(&threads[1]) Thread(1, 0x38, 0x30, main_thread_start);
-  new(&threads[2]) Thread(2, 0x38, 0x30, thread2_start);
-
-  current_thread_id = 2;
-  threads[2].schedule();
-}
-
-void schedule_next_thread() {
-  if (current_thread_id == total_threads) {
-    current_thread_id = 1;
-  } else {
-    current_thread_id++;
-  }
-
-  Thread *t = get_thread(current_thread_id);
-  t->schedule();
-}
-void store_current_thread_context(ThreadContext *context) {
-  Thread *t = get_thread(current_thread_id);
-  t->store_context(context);
 }

@@ -43,6 +43,6 @@ void cpuSetMSR(unsigned int msr, unsigned long value) {
   asm volatile("wrmsr" : : "a"(value & 0xffffffff), "d"(value >> 32), "c"(msr));
 }
 void halt() {
-  while (true) ;
-  //asm volatile ("hlt");
+//  while (true) ;
+  asm volatile ("hlt");
 }
