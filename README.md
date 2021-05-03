@@ -19,3 +19,11 @@ It paints your EFI background with red color.
 1. You will see this
 
 ![red](docs/red.png)
+
+## TODOs
+- dynamic memory allocator
+- virtual memory
+- clock interrupt
+- user space process
+- syscall
+- smp

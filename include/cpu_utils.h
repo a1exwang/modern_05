@@ -5,6 +5,7 @@
 void halt();
 
 std::tuple<void*, u16> get_gdt();
+void load_gdt(std::tuple<void *, u16> gdtr_input);
 std::tuple<void*, u16> get_idt();
 void load_idt(std::tuple<void*, u16> idtr_input);
 

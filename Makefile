@@ -1,6 +1,6 @@
 ARCH            = $(shell uname -m | sed s,i[3456789]86,ia32,)
 
-OBJS            = boot_loader.o
+OBJS            = boot_loader.o boot_page_table.o
 TARGET          = boot_loader.efi
 
 EFIINC          = /usr/include/efi
@@ -40,12 +40,9 @@ boot_loader.efi: boot_loader.so
         --target=efi-app-$(ARCH) boot_loader.so boot_loader.efi
 
 
-disk.raw:
 #	dd if=/dev/zero of=disk.raw bs=1M count=64
 # a gpt partition table and create an fat32 partion(esp) and 1 ext4 partition
-
-
-sda.vdi: boot_loader.efi disk.raw startup.nsh kernel
+disk.raw: boot_loader.efi startup.nsh kernel
 	$(eval loop_device := $(shell udisksctl loop-setup -f disk.raw | python3 -c "import sys; print(sys.stdin.read().split()[-1][:-1])"))
 	$(info loop device ${loop_device})
 	$(eval mount_path := $(shell udisksctl mount -b $(loop_device)p1 | python3 -c "import sys; print(sys.stdin.read().split()[-1])"))
@@ -59,6 +56,9 @@ sda.vdi: boot_loader.efi disk.raw startup.nsh kernel
 	cp startup.nsh ${mount_path}/startup.nsh
 	udisksctl unmount -b ${loop_device}p1
 	udisksctl loop-delete -b ${loop_device}
+
+
+sda.vdi: disk.raw startup.nsh kernel
 	rm -f sda.vdi
 	VBoxManage convertdd disk.raw sda.vdi --format VDI
 

@@ -13,4 +13,4 @@ struct EFIServicesInfo {
 };
 #pragma pack(pop)
 
-constexpr u64 EFIServiceInfoAddress = 0x100000;
+u64 EFIServiceInfoAddress = 0x100000;

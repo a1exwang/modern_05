@@ -15,13 +15,16 @@
 Kernel *Kernel::k;
 
 
-extern "C"
-void kernel_start() {
-  EFIServicesInfo *ServicesInfo = (EFIServicesInfo*)EFIServiceInfoAddress;
+extern "C" {
 
+__attribute__((noreturn))
+void kernel_start() {
   Kernel kernel;
   Kernel::k = &kernel;
   kernel.start();
+  __builtin_unreachable();
+}
+
 }
 void thread_start();
 

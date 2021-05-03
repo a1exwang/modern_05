@@ -148,7 +148,6 @@ uint64_t get_cs() {
   return result;
 }
 
-char KernelData[1024*1024];
 #define Elf64_Addr uint64_t
 #define Elf64_Half uint16_t
 #define Elf64_Off uint64_t
@@ -234,9 +233,8 @@ EntrypointFunc LoadKernel(char *buffer, uint64_t buffer_size) {
   for (int i = 0; i < ehdr->e_phnum; i++) {
     Elf64_Phdr *phdr = (buffer + ehdr->e_phoff + ehdr->e_phentsize * i);
     if (phdr->p_type == PT_LOAD && phdr->p_memsz > 0) {
-      Print(L"0x%0lx 0x%0lx 0x%0lx 0x%0lx\n", phdr->p_offset, phdr->p_filesz, phdr->p_vaddr, phdr->p_memsz);
+      Print(L"  kernel section: 0x%0lx 0x%0lx 0x%0lx 0x%0lx\n", phdr->p_offset, phdr->p_filesz, phdr->p_vaddr, phdr->p_memsz);
       if (phdr->p_filesz <= phdr->p_memsz) {
-
         copy(phdr->p_vaddr, buffer + phdr->p_offset, phdr->p_memsz);
       } else {
         Print(L"Don't know how to load sections that has filesize > memsize");
@@ -263,7 +261,7 @@ void my_print(const uint16_t *fmt, ...) {
 
 }
 
-char memoryDescriptors[1024*4] = {0};
+char memoryDescriptors[1024*8] = {0};
 EFI_STATUS
 efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   InitializeLib(ImageHandle, SystemTable);
@@ -293,12 +291,13 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
 
   Print(L"Descriptor version/size/count/mapkey: 0x%lx/0x%lx/0x%lx/0x%lx\n", descriptorVersion, descriptorSize, memoryMapSize / descriptorSize, mapKey);
   struct EFIServicesInfo *services_info = (struct EFIServicesInfo*)EFIServiceInfoAddress;
+  Print(L"Conventional memory regions:\n");
+  Print(L"  Type Pad PhysicalStart VirtualStart NPages Attr\n");
   for (int i = 0; i < memoryMapSize / descriptorSize; i++) {
     EFI_MEMORY_DESCRIPTOR *md = (memoryDescriptors + descriptorSize*i);
     if (md->Type != EfiReservedMemoryType) {
-      if (md->Type == EfiConventionalMemory && md->PhysicalStart == 0x100000) {
-        Print(L"Conventional memory region\n");
-        Print(L"0x%02lx 0x%08lx 0x%016lx 0x%016lx 0x%08lx 0x%08lx\n",
+      if (md->Type == EfiConventionalMemory/* && md->PhysicalStart == 0x100000*/) {
+        Print(L"  0x%02lx 0x%08lx 0x%016lx 0x%016lx 0x%08lx 0x%08lx\n",
               md->Type,
               md->Pad,
               md->PhysicalStart,
@@ -366,12 +365,6 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   }
   Print(L"Kernel file size 0x%0lx\n", BufferSize);
 
-//  status = SystemTable->BootServices->ExitBootServices(ImageHandle, mapKey);
-//  if (status != EFI_SUCCESS) {
-//    Print(L"Failed to ExitBootService 0x%lx\n", status);
-//    return 1;
-//  }
-
   EntrypointFunc entrypoint = LoadKernel(Buffer, BufferSize);
 
   {
@@ -392,6 +385,8 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     }
   }
 
+  setup_kernel_image_page_table();
   entrypoint();
-  return EFI_SUCCESS;
+//  bootloader_asm(entrypoint);
+  __builtin_unreachable();
 }
