@@ -10,7 +10,8 @@ SET(BUILD_SHARED_LIBS OFF)
 include_directories(include)
 
 add_subdirectory(lib)
+add_subdirectory(mm)
 
-add_executable(kernel kernel.cpp mm.cpp irq.S irq.cpp init/init.cpp init/init.S debug.cpp kthread.cpp)
-target_link_libraries(kernel lib)
+add_executable(kernel kernel.cpp irq.S irq.cpp init/init.cpp init/init.S debug.cpp kthread.cpp)
+target_link_libraries(kernel lib mm)
 set_target_properties(kernel PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/kernel.ld)

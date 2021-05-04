@@ -9,7 +9,7 @@
 #include <cpu_defs.h>
 #include <kernel.h>
 #include <irq.h>
-#include <mm.h>
+#include <mm/mm.h>
 #include "debug.h"
 #include <init/efi_info.h>
 
@@ -41,8 +41,11 @@ void Kernel::start() {
 
   panic("ERROR: kernel::start() should not return, but it returns");
 }
+
+__attribute__((noreturn))
 void Kernel::panic(const char *s) {
   serial_port_ << "Kernel panic: '" << s << "'\n";
   dump_all();
   halt();
+  __builtin_unreachable();
 }

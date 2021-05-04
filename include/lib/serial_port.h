@@ -84,37 +84,37 @@ SerialPort &operator<<(SerialPort &serial_port, char c);
 
 template <typename T>
 SerialPort &operator<<(SerialPort &serial_port, T n) {
-    static_assert(std::is_integral_v<T>);
-    // 20 digits is enough for 2**31-1
-    char temp[20];
+  static_assert(std::is_integral_v<T>);
+  // 20 digits is enough for 2**31-1
+  char temp[20];
 
-    const char *alphabet = "0123456789abcdef";
+  const char *alphabet = "0123456789abcdef";
 
-    T remain = n;
-    int radix = 10;
-    if (serial_port.int_radix_ == SerialPort::IntRadix::Hex) {
-      radix = 16;
-    } else if (serial_port.int_radix_ == SerialPort::IntRadix::Dec) {
-      radix = 10;
-    } else {
-      // TODO: panic
-    }
-    if (n == 0) {
-      serial_port.put('0');
-    } else {
-      int i = 0;
-      while (remain) {
-        auto newRemain = remain / radix;
-        auto digit = alphabet[remain % radix];
-        temp[i] = digit;
-        i++;
-
-        remain = newRemain;
-      }
-      while (i > 0) {
-        i--;
-        serial_port.put(temp[i]);
-      }
-    }
-    return serial_port;
+  T remain = n;
+  int radix = 10;
+  if (serial_port.int_radix_ == SerialPort::IntRadix::Hex) {
+    radix = 16;
+  } else if (serial_port.int_radix_ == SerialPort::IntRadix::Dec) {
+    radix = 10;
+  } else {
+    // TODO: panic
   }
+  if (n == 0) {
+    serial_port.put('0');
+  } else {
+    int i = 0;
+    while (remain) {
+      auto newRemain = remain / radix;
+      auto digit = alphabet[remain % radix];
+      temp[i] = digit;
+      i++;
+
+      remain = newRemain;
+    }
+    while (i > 0) {
+      i--;
+      serial_port.put(temp[i]);
+    }
+  }
+  return serial_port;
+}

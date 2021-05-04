@@ -55,7 +55,10 @@ u64 cpuGetMSR(unsigned int msr) {
 void cpuSetMSR(unsigned int msr, unsigned long value) {
   asm volatile("wrmsr" : : "a"(value & 0xffffffff), "d"(value >> 32), "c"(msr));
 }
+
+__attribute__((noreturn))
 void halt() {
 //  while (true) ;
   asm volatile ("hlt");
+  __builtin_unreachable();
 }

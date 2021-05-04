@@ -15,4 +15,6 @@ SerialPort &operator<<(SerialPort &serial_port, char c) {
   serial_port.put(c);
   return serial_port;
 }
-// T is int type
+//SerialPort &operator<<(SerialPort &serial_port, void *p) {
+//  return serial_port << "0x" << SerialPort::IntRadix::Hex << (u64)p;
+//}

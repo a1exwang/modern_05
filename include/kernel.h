@@ -14,6 +14,7 @@ class Kernel {
 
   void start();
 
+  __attribute__((noreturn))
   void panic(const char *s);
 
  public:

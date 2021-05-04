@@ -13,13 +13,13 @@ _TEXT_START_ = .;
 _TEXT_END_ = .;
   }
 
-  .data (0xffff800000200000): ALIGN(0x1000) {
+  .data (0xffff800000300000): ALIGN(0x1000) {
 _DATA_START_ = .;
     *(.data)
 _DATA_END_ = .;
   }
 
-  .bss (0xffff800000300000): ALIGN(0x1000) {
+  .bss (0xffff800000500000): ALIGN(0x1000) {
 _BSS_START_ = .;
     *(.bss)
 _BSS_END_ = .;

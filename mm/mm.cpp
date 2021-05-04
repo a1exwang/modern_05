@@ -1,10 +1,11 @@
-#include <mm.h>
+#include <mm/mm.h>
 #include <lib/defs.h>
 #include <lib/serial_port.h>
 #include <lib/string.h>
 #include <kernel.h>
 #include <efi/efi.h>
 #include <efi/efidef.h>
+#include <mm/page_alloc.h>
 
 #define CR4_PSE (1u<<4u)
 #define CR4_PAE (1u<<5u)
@@ -85,16 +86,12 @@ void page_table_init() {
   Kernel::sp() << "end test, accessing kernal space address *(" << kernel_addr << ") = " << *(u64*)kernel_addr << "\n";
 }
 
-struct PhysicalMemorySection {
-  u64 phy;
-  u64 n_pages;
-};
 
-PhysicalMemorySection available_memory[1024];
-u64 n_available_memory_sections;
+PageRegion available_memory[1024];
+u64 n_available_regions;
 
 void dump_efi_info() {
-  n_available_memory_sections = 0;
+  n_available_regions = 0;
   auto &efi_info = Kernel::k->efi_info;
 
   u64 total_size = 0;
@@ -114,14 +111,14 @@ void dump_efi_info() {
         Kernel::k->panic("Kernel image should not intersection with conventional memory\n");
       }
 
-      available_memory[n_available_memory_sections].n_pages = md->NumberOfPages;
-      available_memory[n_available_memory_sections].phy = md->PhysicalStart;
-      n_available_memory_sections++;
+      available_memory[n_available_regions].n_pages = md->NumberOfPages;
+      available_memory[n_available_regions].start = md->PhysicalStart;
+      n_available_regions++;
       total_size += md->NumberOfPages*4096;
     }
   }
 
-  Kernel::sp() << "Available memory sections = " << n_available_memory_sections << ", size = " << SerialPort::IntRadix::Dec << total_size/1024 << "KiB\n";
+  Kernel::sp() << "Available memory sections = " << n_available_regions << ", size = " << SerialPort::IntRadix::Dec << total_size/1024 << "KiB\n";
 }
 
 void mm_init() {
@@ -133,6 +130,8 @@ void mm_init() {
   gdt_init();
 
   dump_efi_info();
+
+  page_allocator_init(available_memory, n_available_regions);
 
 //  page_table_init();
 }
