@@ -8,7 +8,9 @@ u64 current_thread_id = 0;
 u64 total_threads = 2;
 Thread *main_thread;
 Thread *thread2;
-u8 threads_space[256 * sizeof(Thread)];
+extern "C" {
+u8 threads_space[32 * sizeof(Thread)];
+}
 
 void thread_start() {
   auto *threads = (Thread*)threads_space;
@@ -53,7 +55,7 @@ void thread2_start() {
     reg = 0x3332;
     __asm__ __volatile__("int $42");
     __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
-    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg << "\n";
+    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
     i++;
   }
 }
@@ -69,7 +71,7 @@ void Thread::store_context(ThreadContext *old_context) {
   memcpy(&this->context, old_context, sizeof(ThreadContext));
 }
 void Thread::schedule() {
-  Kernel::sp() << "schedule() " << id << " " << context.rax << "\n";
+//  Kernel::sp() << "schedule() " << id << " " << context.rax << "\n";
   ::_schedule(&context);
 }
 Thread::Thread(unsigned long id, unsigned short code_selector, unsigned short data_selector, ThreadFunction start) :id(id), start(start) {

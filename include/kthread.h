@@ -42,7 +42,7 @@ class Thread {
   u64 id;
   ThreadFunction start;
   ThreadContext context;
-  u8 stack[1024 * 1024];
+  u8 stack[4 * 1024];
   u8 stack_bottom[0];
 
   void schedule();
@@ -62,4 +62,3 @@ extern u64 current_thread_id;
 extern u64 total_threads;
 extern Thread *main_thread;
 extern Thread *thread2;
-extern u8 threads_space[256 * sizeof(Thread)];

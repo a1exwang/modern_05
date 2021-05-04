@@ -7,6 +7,81 @@
 #include "efiUgaDraw.h"
 #include "include/init/efi_info.h"
 
+unsigned short port = 0x3f8;
+
+void outb(u16 address, u8 data) {
+  asm (
+  "mov %1, %%al\n"
+  "mov %0, %%dx\n"
+  "outb %%al, %%dx\n"
+  :
+  : "r"(address), "r"(data)
+  : "%dx", "%al"
+  );
+}
+u8 inb(u16 address) {
+  u8 result = 0;
+  asm (
+  "mov %1, %%dx\n"
+  "inb %%dx, %%al\n"
+  "mov %%al, %0\n"
+  : "=r"(result)
+  : "r"(address)
+  : "%dx", "%al"
+  );
+  return result;
+}
+
+int is_transmit_empty() {
+  return inb(port + 5) & 0x20;
+}
+
+void init_serial() {
+  outb(port + 1, 0x00);    // Disable all interrupts
+  outb(port + 3, 0x80);    // Enable DLAB (set baud rate divisor)
+  outb(port + 0, 0x01);    // Set divisor to 3 (lo byte) 38400 baud
+  outb(port + 1, 0x00);    //                  (hi byte)
+  outb(port + 3, 0x03);    // 8 bits, no parity, one stop bit
+  outb(port + 2, 0xC7);    // Enable FIFO, clear them, with 14-byte threshold
+  outb(port + 4, 0x0B);    // IRQs enabled, RTS/DSR set
+}
+void putb(u8 byte) {
+  while (is_transmit_empty() == 0);
+  outb(port, byte);
+}
+
+void puts(const char *s) {
+  while (*s != 0) {
+    putb(*s);
+    s++;
+  }
+}
+
+void puti(u64 n) {
+  char temp[32];
+  const char *alphabet = "0123456789abcdef";
+
+  u64 remain = n;
+  u64 radix = 16;
+  if (n == 0) {
+    putb('0');
+  } else {
+    int i = 0;
+    while (remain) {
+      u64 newRemain = remain / radix;
+      u64 digit = alphabet[remain % radix];
+      temp[i] = digit;
+      i++;
+
+      remain = newRemain;
+    }
+    while (i > 0) {
+      i--;
+      putb(temp[i]);
+    }
+  }
+}
+
 /**
 
 
@@ -216,38 +291,75 @@ void copy(char *target, char *src, uint64_t size) {
   }
 }
 
+#define KERNEL_START (0xffff800000000000UL)
+
+struct EFIServicesInfo efi_info;
+
 // buffer contains the elf file
 typedef void (*EntrypointFunc)();
-EntrypointFunc LoadKernel(char *buffer, uint64_t buffer_size) {
+// phyKernelStart: physicalAddress(= virtAddr because EFI has identity mapping) where kernel will be loaded,
+//  but later we will map this physicalAddress to KERNERL_START(0xffff8000_00000000)
+EntrypointFunc LoadKernel(EFI_SYSTEM_TABLE* SystemTable, char *phyKernelStart, uint64_t kernel_max_size, char *buffer, uint64_t buffer_size) {
   Elf64_Ehdr *ehdr = buffer;
   const char *ElfMagic = "\x7f" "ELF";
   for (int i = 0; i < 4; i++) {
     if (ElfMagic[i] != buffer[i]) {
       Print(L"Corrupted ELF file, invalid header magic %x, %x, i = %d\n", (uint32_t)ElfMagic[i], (uint32_t)buffer[i], i);
-      return 1;
+      return 0;
     }
   }
 
   efi_assert(ehdr->e_phoff, L"program header table not found\n");
-  Print(L"%d sections at 0x%08x\n", ehdr->e_phnum, ehdr->e_phoff);
+  Print(L"Kernel has %d EFI sections at 0x%08x\n", ehdr->e_phnum, ehdr->e_phoff);
+  Print(L"  p_offset p_filesz p_vaddr p_memsz\n", ehdr->e_phnum, ehdr->e_phoff);
+  u64 newMappings = 0;
   for (int i = 0; i < ehdr->e_phnum; i++) {
     Elf64_Phdr *phdr = (buffer + ehdr->e_phoff + ehdr->e_phentsize * i);
     if (phdr->p_type == PT_LOAD && phdr->p_memsz > 0) {
-      Print(L"  kernel section: 0x%0lx 0x%0lx 0x%0lx 0x%0lx\n", phdr->p_offset, phdr->p_filesz, phdr->p_vaddr, phdr->p_memsz);
+      Print(L"  0x%0lx 0x%0lx 0x%0lx 0x%0lx", phdr->p_offset, phdr->p_filesz, phdr->p_vaddr, phdr->p_memsz);
       if (phdr->p_filesz <= phdr->p_memsz) {
-        copy(phdr->p_vaddr, buffer + phdr->p_offset, phdr->p_memsz);
+        UINT64 section_start = phdr->p_vaddr;
+        UINT64 section_offset = section_start - KERNEL_START;
+        if (section_offset + phdr->p_memsz > kernel_max_size) {
+          Print(L"kernel file size too big to fill in the allocated buffer\n");
+          return 0;
+        }
+        char *target_phy = phyKernelStart + section_offset;
+        Print(L" map 0x%0lx -> 0x%0lx\n", target_phy, phdr->p_vaddr);
+
+        EFI_MEMORY_DESCRIPTOR* md = efi_info.memory_descriptors + efi_info.descriptor_size * efi_info.descriptor_count;
+        efi_info.descriptor_count++;
+        md->Type = EfiBootServicesData;
+        md->Pad = 0;
+        md->PhysicalStart = (u64)target_phy;
+        md->VirtualStart = phdr->p_vaddr;
+        // ceil(memsz/4096)
+        md->NumberOfPages = (phdr->p_memsz + 4095) / 4096;
+        // noncacheable+cachable+wt-able+wb-able
+        md->Attribute = 0xf;
+
+        copy(target_phy, buffer + phdr->p_offset, phdr->p_memsz);
       } else {
+        Print(L"\n");
         Print(L"Don't know how to load sections that has filesize > memsize");
-        return 1;
+        return 0;
       }
     }
   }
   EntrypointFunc entrypoint = ehdr->e_entry;
-  Print(L"Kernel start: ");
+  char *kernelEntry = phyKernelStart + ((uint64_t)entrypoint - KERNEL_START);
+
+  efi_info.kernel_physical_start = (uint64_t)phyKernelStart;
+  efi_info.kernel_physical_size = kernel_max_size;
+
+  void dump_memory_map(char *memory_descriptors, uint64_t descriptor_version, uint64_t descriptor_size, uint64_t descriptor_count);
+  dump_memory_map(efi_info.memory_descriptors, efi_info.descriptor_version, efi_info.descriptor_size, efi_info.descriptor_count);
+
+  Print(L"Kernel entry: ");
   for (int i = 0; i < 16; i++) {
-    Print(L"%02x ", (int)((unsigned char*)entrypoint)[i]);
+    Print(L"%02x ", (u8)((kernelEntry[i])));
   }
-  Print(L"\ngoing to kernel at 0x%lx\n", entrypoint);
+  Print(L"\nkernel loaded at virt: 0x%lx, phy: 0x%lx\n", entrypoint, kernelEntry);
   return entrypoint;
 }
 
@@ -261,7 +373,42 @@ void my_print(const uint16_t *fmt, ...) {
 
 }
 
-char memoryDescriptors[1024*8] = {0};
+void dump_memory_map(char *memory_descriptors, uint64_t descriptor_version, uint64_t descriptor_size, uint64_t descriptor_count) {
+  Print(L"Descriptor version/size/count: 0x%lx/0x%lx/0x%lx\n",
+        descriptor_version,
+        descriptor_size,
+        descriptor_count);
+  Print(L"Conventional memory regions:\n");
+  Print(L"  Type Pad PhysicalStart VirtualStart NPages Attr\n");
+  for (int i = 0; i < descriptor_count; i++) {
+    EFI_MEMORY_DESCRIPTOR *md = (&memory_descriptors[0] + descriptor_size*i);
+    if (md->Type != EfiReservedMemoryType) {
+//      if (md->Type == EfiConventionalMemory/* && md->PhysicalStart == 0x100000*/) {
+        Print(L"  0x%02lx 0x%08lx 0x%016lx 0x%016lx 0x%08lx 0x%08lx\n",
+              md->Type,
+              md->Pad,
+              md->PhysicalStart,
+              md->VirtualStart,
+              md->NumberOfPages,
+              md->Attribute);
+//      }
+    }
+  }
+}
+
+void print_memory_map(EFI_SYSTEM_TABLE *SystemTable) {
+  UINTN memoryMapSize = sizeof(efi_info.memory_descriptors);
+  UINTN mapKey;
+  EFI_STATUS st = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &efi_info.memory_descriptors[0], &mapKey, &efi_info.descriptor_size, &efi_info.descriptor_version);
+  if (st != EFI_SUCCESS) {
+    Print(L"Failed to GetMemoryMap the second time 0x%lx\n", st);
+    return st;
+  }
+  efi_info.descriptor_count = memoryMapSize / efi_info.descriptor_size;
+
+  dump_memory_map(&efi_info.memory_descriptors[0], efi_info.descriptor_version, efi_info.descriptor_size, efi_info.descriptor_count);
+}
+
 EFI_STATUS
 efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   InitializeLib(ImageHandle, SystemTable);
@@ -275,39 +422,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   }
   efi_call2(TextOut->OutputString, TextOut, L"TextOut->OutputString()\r\n");
 
-
   Print(L"Hello, world!\n");
-  UINTN memoryMapSize = sizeof(memoryDescriptors);
-  UINTN mapKey;
-  UINTN descriptorSize;
-  UINT32 descriptorVersion;
-  st = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &memoryDescriptors[0], &mapKey, &descriptorSize, &descriptorVersion);
-  if (st != EFI_SUCCESS) {
-    Print(L"Failed to GetMemoryMap 0x%lx\n", st);
-    return st;
-  }
-
-//  efi_call2(TextOut->OutputString, TextOut, L"ExitBootService() done\r\n");
-
-  Print(L"Descriptor version/size/count/mapkey: 0x%lx/0x%lx/0x%lx/0x%lx\n", descriptorVersion, descriptorSize, memoryMapSize / descriptorSize, mapKey);
-  struct EFIServicesInfo *services_info = (struct EFIServicesInfo*)EFIServiceInfoAddress;
-  Print(L"Conventional memory regions:\n");
-  Print(L"  Type Pad PhysicalStart VirtualStart NPages Attr\n");
-  for (int i = 0; i < memoryMapSize / descriptorSize; i++) {
-    EFI_MEMORY_DESCRIPTOR *md = (memoryDescriptors + descriptorSize*i);
-    if (md->Type != EfiReservedMemoryType) {
-      if (md->Type == EfiConventionalMemory/* && md->PhysicalStart == 0x100000*/) {
-        Print(L"  0x%02lx 0x%08lx 0x%016lx 0x%016lx 0x%08lx 0x%08lx\n",
-              md->Type,
-              md->Pad,
-              md->PhysicalStart,
-              md->VirtualStart,
-              md->NumberOfPages,
-              md->Attribute);
-        services_info->phy_size = md->NumberOfPages * 4096;
-      }
-    }
-  }
 
 //   egInitScreen();
 //   Print(L"Screen initialized %lux%lu\n", egScreenWidth, egScreenHeight);
@@ -316,19 +431,41 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   uint64_t result = get_cs();
   Print(L"cs: %04lx\n", result);
 
-  EFI_STATUS status = LibLocateProtocol(&SimpleFileSystemProtocolGuid, (VOID**)&SimpleFileSystem);
+  EFI_PHYSICAL_ADDRESS PhysicalBuffer;
+  UINT64 AllocSize = (1 + 128) * 1024 * 1024;
+  UINTN Pages = AllocSize / 4096;
+  EFI_STATUS status = efi_call4(
+      SystemTable->BootServices->AllocatePages,
+      AllocateAnyPages,
+      EfiBootServicesData,
+      Pages,
+      &PhysicalBuffer
+  );
+  if (status != EFI_SUCCESS) {
+    Print(L"Failed to AllocatePages\n");
+    return status;
+  }
+
+  Print(L"Allocated 0x%lx pages starting from 0x%lx\n", Pages, PhysicalBuffer);
+
+  UINT64 stackStart = PhysicalBuffer;
+  UINT64 stackSize = 1024 * 1024;
+  UINT64 kernelStart = stackStart + stackSize;
+  char *Buffer = (char*)kernelStart;
+  UINT64 KernelMaxSize = AllocSize - stackSize;
+
+  print_memory_map(SystemTable);
+
+  // Get File system info
+  status = LibLocateProtocol(&SimpleFileSystemProtocolGuid, (VOID**)&SimpleFileSystem);
   EFI_FILE_PROTOCOL *File;
   status = efi_call2(SimpleFileSystem->OpenVolume,SimpleFileSystem, &File);
   if (status != EFI_SUCCESS) {
     Print(L"Failed to open volume 0x%lx\n", status);
     return 1;
   }
-  uint64_t BufferSize = 1048576 * 10;
-  unsigned char*Buffer = 0x101000;
-
-  // Get File system info
   EFI_GUID infoid = EFI_FILE_SYSTEM_INFO_ID;
-  uint64_t GetInfoBufferSize = BufferSize;
+  uint64_t GetInfoBufferSize = KernelMaxSize;
   status = efi_call4(File->GetInfo, File, &infoid, &GetInfoBufferSize, Buffer);
   if (status != EFI_SUCCESS) {
     Print(L"Failed to getInfo 0x%lx\n", status);
@@ -346,7 +483,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   }
 
   EFI_GUID file_info_id = EFI_FILE_INFO_ID;
-  uint64_t GetFileInfoBufferSize = BufferSize;
+  uint64_t GetFileInfoBufferSize = KernelMaxSize;
   status = efi_call4(File->GetInfo, FileHandle, &file_info_id, &GetFileInfoBufferSize, Buffer);
   if (status != EFI_SUCCESS) {
     Print(L"Failed to get file info 0x%lx\n", status);
@@ -356,8 +493,8 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   EFI_FILE_INFO  *f_info = Buffer;
   Print(L"Size=0x%0lx, Name='%s'\n", f_info->FileSize, f_info->FileName);
 
-
   // read file
+  UINT64 BufferSize = KernelMaxSize;
   status = efi_call3(File->Read, FileHandle, &BufferSize, Buffer);
   if (status != EFI_SUCCESS) {
     Print(L"Failed to read kernel file st=%ld\n", status);
@@ -365,19 +502,27 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   }
   Print(L"Kernel file size 0x%0lx\n", BufferSize);
 
-  EntrypointFunc entrypoint = LoadKernel(Buffer, BufferSize);
+  EntrypointFunc entrypoint = LoadKernel(SystemTable, kernelStart, KernelMaxSize, Buffer, BufferSize);
+  if (!entrypoint) {
+    Print(L"Failed to load kernel\n");
+    return 1;
+  }
 
   {
+    u8 memory_descriptors[8192];
+    u64 descriptor_size;
+    u64 descriptor_count;
+    u64 descriptor_version;
 
-    UINTN memoryMapSize = sizeof(memoryDescriptors);
+    UINTN memoryMapSize = sizeof(memory_descriptors);
     UINTN mapKey;
-    UINTN descriptorSize;
-    UINT32 descriptorVersion;
-    status = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &memoryDescriptors[0], &mapKey, &descriptorSize, &descriptorVersion);
+    status = efi_call5(SystemTable->BootServices->GetMemoryMap, &memoryMapSize, &memory_descriptors[0], &mapKey, &descriptor_size, &descriptor_version);
     if (status != EFI_SUCCESS) {
       Print(L"Failed to GetMemoryMap the second time 0x%lx\n", status);
       return status;
     }
+    descriptor_count = memoryMapSize / descriptor_size;
+
     status = efi_call2(SystemTable->BootServices->ExitBootServices, ImageHandle, mapKey);
     if (status != EFI_SUCCESS) {
       Print(L"Failed to ExitBootServices 0x%lx\n", status);
@@ -385,8 +530,36 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     }
   }
 
-  setup_kernel_image_page_table();
+  status = efi_call4(
+      SystemTable->RuntimeServices->SetVirtualAddressMap,
+      efi_info.descriptor_count,
+      efi_info.descriptor_size,
+      efi_info.descriptor_version,
+      efi_info.memory_descriptors);
+  if (status != EFI_SUCCESS) {
+    puts("failed set memory map\n");
+    return 1;
+  }
+
+  puts("hello serial from bootloader\n");
+
+//  u64 cr3;
+//  asm volatile("mov %%cr3, %0" :"r="(cr3));
+//  puts("dump page table ");
+//  puti(cr3);
+//  puts("\n");
+//  void dump_pagetable(const u64* pml4t);
+////  dump_pagetable(cr3);
+//  puts("try reading entrypoint[0] = ");
+//  puti(*(u8*)entrypoint);
+//  puts("\n");
+
+  setup_kernel_image_page_table((void*)kernelStart);
+
+  puts("kernel page table setup done\n");
+
   entrypoint();
 //  bootloader_asm(entrypoint);
-  __builtin_unreachable();
+  //__builtin_unreachable();
+  return 0;
 }

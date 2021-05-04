@@ -74,11 +74,11 @@ void gdt_init() {
   load_gdt(std::make_tuple(kernel_gdt, sizeof(kernel_gdt)-1));
 }
 
-extern "C" void setup_kernel_image_page_table();
+//extern "C" void setup_kernel_image_page_table();
 
 void page_table_init() {
   Kernel::sp() << "setting up page table \n";
-  setup_kernel_image_page_table();
+//  setup_kernel_image_page_table();
   auto kernel_addr = ((u64)&global_test + 0xffff800000000000ul);
   Kernel::sp() << "end test, accessing kernal space address *(" << kernel_addr << ") = " << *(u64*)kernel_addr << "\n";
 }
