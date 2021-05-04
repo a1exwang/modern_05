@@ -2,7 +2,7 @@
 #include <init/efi_info.h>
 #include <tuple>
 #include <type_traits>
-#include <string.h>
+#include <lib/string.h>
 #include <lib/port_io.h>
 #include <lib/serial_port.h>
 #include <cpu_utils.h>
@@ -11,6 +11,7 @@
 #include <irq.h>
 #include <mm.h>
 #include "debug.h"
+#include <init/efi_info.h>
 
 Kernel *Kernel::k;
 
@@ -18,8 +19,9 @@ Kernel *Kernel::k;
 extern "C" {
 
 __attribute__((noreturn))
-void kernel_start() {
+void kernel_start(EFIServicesInfo *efi_info) {
   Kernel kernel;
+  memcpy(&kernel.efi_info, efi_info, sizeof(kernel.efi_info));
   Kernel::k = &kernel;
   kernel.start();
   __builtin_unreachable();

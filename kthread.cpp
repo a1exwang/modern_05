@@ -37,13 +37,15 @@ void store_current_thread_context(ThreadContext *context) {
 
 void main_thread_start() {
   u64 i = 0;
+
+  Kernel::sp() << "main thread started\n";
   while (true) {
     u64 reg_new;
     register u64 reg asm("rax");
     reg = (u64)0x2223;
     __asm__ __volatile__("int $42");
     __asm__ __volatile__("movq %%rax, %0" :"=r"(reg_new));
-    Kernel::sp() << SerialPort::IntRadix::Hex << "thread1 run " << i << " " << reg_new << "\n";
+//    Kernel::sp() << SerialPort::IntRadix::Hex << "thread1 run " << i << " " << reg_new << "\n";
     i++;
   }
 }
@@ -55,7 +57,7 @@ void thread2_start() {
     reg = 0x3332;
     __asm__ __volatile__("int $42");
     __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
-    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
+//    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
     i++;
   }
 }

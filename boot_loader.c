@@ -543,23 +543,18 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
 
   puts("hello serial from bootloader\n");
 
-//  u64 cr3;
-//  asm volatile("mov %%cr3, %0" :"r="(cr3));
-//  puts("dump page table ");
-//  puti(cr3);
-//  puts("\n");
-//  void dump_pagetable(const u64* pml4t);
-////  dump_pagetable(cr3);
-//  puts("try reading entrypoint[0] = ");
-//  puti(*(u8*)entrypoint);
-//  puts("\n");
-
   setup_kernel_image_page_table((void*)kernelStart);
 
   puts("kernel page table setup done\n");
 
-  entrypoint();
-//  bootloader_asm(entrypoint);
-  //__builtin_unreachable();
+  asm volatile(
+      "movq %1, %%rdi \n\t"
+      "movq %0, %%rax \n\t"
+      "jmp %%rax \n\t"
+      :
+      :"r"(entrypoint), "r"(&efi_info)
+      :
+  );
+
   return 0;
 }

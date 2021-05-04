@@ -157,10 +157,18 @@ void setup_kernel_image_page_table(u64 kernelPhyStart) {
     t.pdt[i].base_addr = ((u64)&t.pt[PAGES_PER_TABLE * i]) >> 12;
   }
 
-  for (u64 i = 0; i < sizeof(t.pt) / sizeof(t.pt[0]); i++) {
+//  for (u64 i = 0; i < sizeof(t.pt) / sizeof(t.pt[0]); i++) {
+//    t.pt[i].p = 1;
+//    t.pt[i].rw = 1;
+//    t.pt[i].base_addr = i;
+//  }
+
+  // only map the first 64MiB for kernel image file
+  // other kernel space address is not mapped
+  for (u64 i = 0; i < (64*1024*1024 / 4096); i++) {
     t.pt[i].p = 1;
     t.pt[i].rw = 1;
-    t.pt[i].base_addr = (kernelPhyStart >> 12) + i;
+    t.pt[i].base_addr = (kernelPhyStart/4096) + i;
   }
 
   cr3 = t.pml4t;
