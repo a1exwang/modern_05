@@ -26,8 +26,11 @@ void print_segment_descriptor(SerialPort &serial_port, u16 selector, void *gdt) 
 void dump_all() {
 
   PRINT_REG(u16, cs);
+  PRINT_REG(u16, ds);
+  PRINT_REG(u16, es);
   PRINT_REG(u16, fs);
   PRINT_REG(u16, gs);
+  PRINT_REG(u16, ss);
 
   PRINT_REG(u64, rax);
   PRINT_REG(u64, rcx);

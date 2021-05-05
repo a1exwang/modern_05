@@ -315,11 +315,19 @@ void page_allocator_init(PageRegion *regions, u64 n_regions) {
   buddy_allocator_init(max_pages, log2size);
 }
 
-u64 kernel_page_alloc(u64 i) {
+void *kernel_page_alloc(u64 i) {
   auto phy_addr = buddy_allocator->allocate_pages(i);
-  return KERNEL_START + phy_addr;
+  return (void*)(KERNEL_START + phy_addr);
 }
 
-void kernel_page_release(u64 vaddr) {
-  buddy_allocator->free_pages(vaddr - KERNEL_START);
+void kernel_page_release(void *vaddr) {
+  buddy_allocator->free_pages((u64)vaddr - KERNEL_START);
+}
+
+u64 physical_page_alloc(u64 i) {
+  return buddy_allocator->allocate_pages(i);
+}
+
+void physical_page_release(u64 paddr) {
+  buddy_allocator->free_pages(paddr);
 }

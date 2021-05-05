@@ -44,6 +44,27 @@ enum DescriptorType {
   LongTrapGate = 0xf,
 };
 
+// LDT or TSS descriptor
+struct SystemSegmentDescriptor {
+  u16 segment_limit_lo16;
+  u16 base_addr_lo16;
+
+  u8 base_addr_mid8;
+  u8 type : 4;
+  u8 zero : 1;
+  u8 dpl : 2;
+  u8 p : 1;
+  u8 segment_limit_hi4 : 4;
+  u8 avl : 1;
+  u8 unused : 2;
+  u8 g : 1;
+  u8 base_addr_midhi8;
+
+  u32 base_addr_hi32;
+
+  u32 reserved0;
+};
+
 struct InterruptDescriptor {
   u16 offset_lo16;
   u16 selector;

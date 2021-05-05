@@ -45,8 +45,8 @@ extern "C" void irq_handler(u64 irq_num, u64 error_code) {
   } else {
     auto context = &get_current_thread()->context;
     Kernel::k->serial_port_
-        << "IRQ = " << irq_num << " error = " << error_code << " thread = " << current_thread_id << "\n"
-        << "rip = " << context->rip << " rsp = " << context->rsp << "\n";
+        << "IRQ = 0x" << SerialPort::IntRadix::Hex << irq_num << " error = 0x" << error_code << " thread = 0x" << current_thread_id << "\n"
+        << "rip = 0x" << context->rip << " rsp = 0x" << context->rsp << "\n";
 
     Kernel::k->panic("unhandled exception");
   }

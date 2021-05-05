@@ -27,6 +27,15 @@
 return_from_syscall:
     mov %rdi, %rsp
 
+    pop %rax
+    mov %ax, %ds
+    pop %rax
+    mov %ax, %es
+    pop %rax
+    mov %ax, %fs
+    pop %rax
+    mov %ax, %gs
+
     pop %r15
     pop %r14
     pop %r13
@@ -63,11 +72,21 @@ _irq_handler:
     push %r14
     push %r15
 
+    xor %rax, %rax
+    mov %gs, %ax
+    push %rax
+    mov %fs, %ax
+    push %rax
+    mov %es, %ax
+    push %rax
+    mov %ds, %ax
+    push %rax
+
     movq %rsp, %rdi
     call store_current_thread_context
 
-    movq 120(%rsp), %rdi
-    movq 128(%rsp), %rsi
+    movq 152(%rsp), %rdi
+    movq 160(%rsp), %rsi
     call irq_handler
 
     call schedule

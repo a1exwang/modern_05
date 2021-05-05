@@ -3,6 +3,11 @@
 
 #pragma pack(push, 1)
 struct ThreadContext {
+  u64 ds;
+  u64 es;
+  u64 fs;
+  u64 gs;
+
   u64 r15;
   u64 r14;
   u64 r13;
