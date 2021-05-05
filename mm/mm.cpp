@@ -7,6 +7,7 @@
 #include <lib/string.h>
 #include <mm/mm.h>
 #include <mm/page_alloc.h>
+#include <irq.h>
 
 #define CR4_PSE (1u<<4u)
 #define CR4_PAE (1u<<5u)
@@ -15,6 +16,7 @@ static bool is_page_present(u64 page_table_entry) {
   return page_table_entry & 0x1u;
 }
 
+TaskStateSegment tss;
 u64 global_test = 0x233;
 
 void calculate_total_pages(const u64* pml4t) {
@@ -180,6 +182,36 @@ void gdt_init() {
   kernel_gdt[i].__reserved = 1;
   kernel_gdt[i].__wr = 1;
   kernel_gdt[i]._dpl = 3;
+
+  // setup TSS
+  memset(&tss, 0, sizeof(tss));
+  tss.iomap_base_addr = ((u64)&tss.iomap - (u64)&tss);
+  tss.rsp0 = (u64)&interrupt_stack[INTERRUPT_STACK_SIZE];
+
+  auto *task_desc = (SystemSegmentDescriptor*)&kernel_gdt[TSS_INDEX];
+  auto tss_addr = (u64)&tss;
+  memset(task_desc, 0, sizeof(SystemSegmentDescriptor));
+  task_desc->segment_limit_lo16 = sizeof(TaskStateSegment) & 0xffff;
+  task_desc->segment_limit_hi4 = sizeof(TaskStateSegment) >> 16;
+  task_desc->base_addr_lo16 = tss_addr & 0xffff;
+  task_desc->base_addr_mid8 = (tss_addr >> 16) & 0xff;
+  task_desc->base_addr_midhi8 = (tss_addr >> 24) & 0xff;
+  task_desc->base_addr_hi32 = (tss_addr >> 32) & 0xffffffff;
+
+  task_desc->type = DescriptorType::LongAvailableTSS;
+  task_desc->dpl = 0;
+  task_desc->p = 1;
+
+  load_kernel_gdt();
+
+  Kernel::sp() << "loading tr 0x" << SerialPort::IntRadix::Hex << TSS_SELECTOR << "\n";
+  asm volatile(
+      "movq %0, %%rax\t\n"
+      "ltr %%ax\t\n"
+      :
+      :"r"((u64)TSS_SELECTOR)
+      :"%rax"
+      );
 }
 
 //extern "C" void setup_kernel_image_page_table();

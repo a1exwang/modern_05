@@ -14,6 +14,7 @@
 
 .global _ss_irq_handler
 .global _gp_irq_handler
+.global _pf_irq_handler
 
 .global _timer_irq_handler
 .global _syscall_irq_handler
@@ -186,6 +187,12 @@ _ss_irq_handler:
 # general protection
 _gp_irq_handler:
     pushq $13
+    jmp _irq_handler
+    iretq
+
+# page fault
+_pf_irq_handler:
+    pushq $14
     jmp _irq_handler
     iretq
 

@@ -46,4 +46,3 @@ Context *current_context();
 extern u64 current_pid;
 
 }
-

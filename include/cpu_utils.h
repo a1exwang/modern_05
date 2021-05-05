@@ -14,3 +14,4 @@ void load_idt(std::tuple<void*, u16> idtr_input);
 u64 cpuGetMSR(u32 msr);
 
 void cpuSetMSR(u32 msr, u64 value);
+void flush_tlb();

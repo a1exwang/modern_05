@@ -3,7 +3,7 @@ OUTPUT_FORMAT(elf64-x86-64)
 SECTIONS
 {
 /* Currently using hack to let linker script file the object file */
-  .text.start (0xffff800000010000) : {
+  .text.start (0xffff800000100000) : {
     CMakeFiles/kernel.dir/init/init.cpp.o( .text )
   }
 
@@ -23,5 +23,10 @@ _DATA_END_ = .;
 _BSS_START_ = .;
     *(.bss)
 _BSS_END_ = .;
+  }
+
+  /* put these useless sections at the end of 32MiB */
+  .note.gnu.build-id (0xffff800001f00000): ALIGN(0x1000) {
+    *(.note.gnu.build-id)
   }
 }

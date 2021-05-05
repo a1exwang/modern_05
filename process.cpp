@@ -6,6 +6,8 @@
 #include <mm/page_alloc.h>
 #include <process.h>
 #include <syscall.h>
+#include <irq.h>
+#include <elf.h>
 
 u64 current_pid = 0;
 
@@ -50,7 +52,7 @@ class Process {
     // create a new user space map
     pts->pml4t[0].p = 1;
     pts->pml4t[0].rw = 1;
-    pts->pml4t[0].us = 0;
+    pts->pml4t[0].us = 1;
     pts->pml4t[0].base_addr = (pts_paddr + ((u64)&pts->pdpt[0] - (u64)pts)) >> 12;
 
     // only the first pdpt is used
@@ -68,11 +70,12 @@ class Process {
 
     // 1MiB ~ 2MiB are for exec image
     user_image = (u8*)(1UL*1024UL*1024UL);
-    user_image_phy_addr = physical_page_alloc(USER_IMAGE_SIZE);
+    user_image_phy_addr = physical_page_alloc(log2(USER_IMAGE_SIZE));
     map_user_addr((u64)user_image, user_image_phy_addr, user_image_size / PAGE_SIZE);
 
     // 32MiB ~ 33MiB are for user stack
-    user_stack_phy_addr = physical_page_alloc(USER_STACK_SIZE);
+    user_stack = (u8*)(33UL*1024UL*1024UL);
+    user_stack_phy_addr = physical_page_alloc(log2(USER_STACK_SIZE));
     map_user_addr((u64)user_stack, user_stack_phy_addr, user_stack_size / PAGE_SIZE);
 
     context.cr3 = pts_paddr;
@@ -86,9 +89,16 @@ class Process {
     context.rip = (u64)&process_entrypoint;
     // first parameter for process_entry_point(p)
     context.rdi = (u64)this;
+
+    print();
+  }
+
+  void print() {
+    Kernel::sp() << SerialPort::IntRadix::Hex << "user image " << user_image_phy_addr << " stack 0x" << user_stack_phy_addr << "\n";
   }
 
   void map_user_addr(u64 vaddr, u64 paddr, u64 n_pages) {
+    Kernel::sp() << SerialPort::IntRadix::Hex << "mapping 0x" << vaddr << " -> " << paddr << " " << n_pages << " pages\n";
     for (u64 i = 0; i < n_pages; i++) {
       auto vpage = (vaddr >> 12) + i;
       auto ppage = (paddr >> 12) + i;
@@ -97,6 +107,35 @@ class Process {
       pts->pt[vpage].us = 1;
       pts->pt[vpage].base_addr = ppage;
     }
+  }
+
+  void *load_elf_from_buffer(char *buffer, u64 size) {
+    Elf64_Ehdr *ehdr = (Elf64_Ehdr*)buffer;
+    const char *ElfMagic = "\x7f" "ELF";
+    for (int i = 0; i < 4; i++) {
+      if (ElfMagic[i] != buffer[i]) {
+        Kernel::k->panic("Corrupted ELF file, invalid header magic");
+      }
+    }
+
+    assert(ehdr->e_phoff, "program header table not found\n");
+    Kernel::sp() << "elf has " << SerialPort::IntRadix::Dec << ehdr->e_phnum << " sections at 0x" << SerialPort::IntRadix::Hex << ehdr->e_phoff << "\n";
+    Kernel::sp() << "  p_offset p_filesz p_vaddr p_memsz\n";
+    for (int i = 0; i < ehdr->e_phnum; i++) {
+      auto phdr = (Elf64_Phdr*)(buffer + ehdr->e_phoff + ehdr->e_phentsize * i);
+      if (phdr->p_type == PT_LOAD && phdr->p_memsz > 0) {
+        Kernel::sp() << SerialPort::IntRadix::Hex << "  0x" << phdr->p_offset << " 0x" << phdr->p_filesz << " 0x" << phdr->p_vaddr << " 0x" << phdr->p_memsz << "\n";
+        assert(phdr->p_vaddr >= 0x100000, "Segment is at wrong location");
+        assert(phdr->p_vaddr+phdr->p_memsz <= 0x200000, "Segment too big");
+        if (phdr->p_filesz <= phdr->p_memsz) {
+          memcpy((void*)phdr->p_vaddr, buffer + phdr->p_offset, phdr->p_filesz);
+        } else {
+          Kernel::k->panic("\nDon't know how to load sections that has filesize > memsize");
+        }
+      }
+    }
+    Kernel::sp() << "entrypoint at " << SerialPort::IntRadix::Hex << ehdr->e_entry << "\n";
+    return (void*)ehdr->e_entry;
   }
 
   static void process_entrypoint(Process *p) {
@@ -108,7 +147,7 @@ class Process {
   }
 
   void kernel_entrypoint() {
-    Kernel::sp() << "starting kernel thread '" << (const char*)name << "'\n";
+    Kernel::sp() << "starting process pid = "<< current_pid << " '" << (const char*)name << "'\n";
     if (tmp_start) {
       Kernel::sp() << "has tmp_start, going for it" << "\n";
       tmp_start();
@@ -165,10 +204,52 @@ void thread2_start() {
     u64 reg_new;
     register u64 reg asm("rax");
     reg = 0x3332;
-    do_syscall();
+
+    asm volatile(
+    "movq $0x2, %%rax\t\n"
+    "int $42"
+    :
+    :
+    :"%rax"
+    );
     __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
-    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
+//    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
     i++;
+  }
+}
+
+extern "C" char _binary_user_init_start[];
+extern "C" char _binary_user_init_end[];
+
+Process *current() {
+  return processes[current_pid];
+}
+
+void exec_main() {
+  u64 size = _binary_user_init_end - _binary_user_init_start;
+  char *start = _binary_user_init_start;
+  Kernel::sp() << "init elf size = " << SerialPort::IntRadix::Hex << size << ", start bytes 0x" << (u64)start[0] << " 0x" << (u64)start[1] << "\n";
+
+  auto proc = current();
+  auto start_addr = proc->load_elf_from_buffer(start, size);
+
+  Kernel::sp() << "ELF file loaded\n";
+
+  // goto user space
+  {
+    auto &c = proc->context;
+
+    c.cs = USER_CODE_SELECTOR;
+    c.ds = USER_DATA_SELECTOR;
+    c.ss = USER_DATA_SELECTOR;
+    c.es = USER_DATA_SELECTOR;
+    // TODO: user real selector
+    c.fs = 0;
+    c.gs = 0;
+    c.rsp = (u64)proc->user_stack + proc->user_stack_size;
+    c.rip = (u64)start_addr;
+
+    return_from_syscall(&c);
   }
 }
 
@@ -181,17 +262,21 @@ void main_start() {
   new_proc->tmp_start = thread2_start;
   new_proc->name[0] = '2';
 
-  Kernel::sp() << "main process working\n";
-  u64 i = 0;
-  while (true) {
-    u64 reg_new;
-    register u64 reg asm("rax");
-    reg = (u64)0x2223;
-    do_syscall();
-    __asm__ __volatile__("movq %%rax, %0" :"=r"(reg_new));
-    Kernel::sp() << SerialPort::IntRadix::Hex << "main process run " << i << " " << reg_new << "\n";
-    i++;
-  }
+  Kernel::sp() << "main process loading\n";
+
+  exec_main();
+
+  Kernel::k->panic("Should not reach here\n");
+//  u64 i = 0;
+//  while (true) {
+//    u64 reg_new;
+//    register u64 reg asm("rax");
+//    reg = (u64)0x2223;
+//    do_syscall();
+//    __asm__ __volatile__("movq %%rax, %0" :"=r"(reg_new));
+////    Kernel::sp() << SerialPort::IntRadix::Hex << "main process run " << i << " " << reg_new << "\n";
+//    i++;
+//  }
 }
 
 void process_init() {
@@ -229,23 +314,65 @@ void store_current_thread_context(Context *context) {
       sizeof(Context)
   );
 }
-
-void dump_thread_context(const Context &context) {
-  Kernel::sp() << SerialPort::IntRadix::Hex << "rip: 0x" << context.rip << " rsp: " << context.rsp << "\n";
-}
-
-//Thread::Thread(unsigned long id, ThreadFunction start) :id(id), start(start) {
-//  memset(&context, 0, sizeof(context));
-//  context.cs = KERNEL_CODE_SELECTOR;
-//  context.ss = KERNEL_DATA_SELECTOR;
-//  context.ds = KERNEL_DATA_SELECTOR;
-//  context.es = KERNEL_DATA_SELECTOR;
-//  context.fs = KERNEL_DATA_SELECTOR;
-//  context.gs = KERNEL_DATA_SELECTOR;
-//  context.rsp = (u64)stack_bottom;
-//  context.rip = (u64)start;
-//}
-//
 Context *current_context() {
   return &processes[current_pid]->context;
+}
+
+using SyscallFunc = void (*)();
+
+void _sys_exit() {
+  Kernel::sp() << "process " << SerialPort::IntRadix::Dec << current_pid << " successfully exit, not implemented so halt\n";
+  halt();
+}
+
+void _sys_yield() {
+
+}
+
+void _sys_write() {
+  const char *p = (const char*)current()->context.rdi;
+  Kernel::sp() << "write() from pid " << current_pid << " content '" << p << "'\n";
+}
+
+extern "C" {
+
+// NOTE: keep these two tables in sync
+enum {
+  SYSCALL_NR_EXIT = 1,
+  SYSCALL_NR_YIELD,
+  SYSCALL_NR_WRITE,
+  SYSCALL_NR_MAX
+};
+
+// NOTE: keep these two tables in sync
+SyscallFunc syscall_table[] = {
+    nullptr,
+    &_sys_exit,
+    &_sys_yield,
+    &_sys_write,
+};
+
+}
+
+// Copied from Linux source code
+//  * Registers on entry:
+// * rax  system call number
+// * rcx  return address
+// * r11  saved rflags (note: r11 is callee-clobbered register in C ABI)
+// * rdi  arg0
+// * rsi  arg1
+// * rdx  arg2
+// * r10  arg3 (needs to be moved to rcx to conform to C ABI)
+// * r8   arg4
+// * r9   arg5
+void handle_syscall() {
+  auto &c = current()->context;
+  auto syscall_num = c.rax;
+  if (syscall_num == 0) {
+    Kernel::k->panic("Invalid syscall 0");
+  } else if (syscall_num >= SYSCALL_NR_MAX) {
+    Kernel::k->panic("Invalid syscall >= max");
+  }
+
+  syscall_table[syscall_num]();
 }

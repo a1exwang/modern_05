@@ -71,6 +71,26 @@ struct SystemSegmentDescriptor {
   u32 reserved0;
 };
 
+struct TaskStateSegment {
+  u32 reserved1_ignore;
+  u64 rsp0;
+  u64 rsp1;
+  u64 rsp2;
+  u64 reserved2_ignore;
+  u64 ist1;
+  u64 ist2;
+  u64 ist3;
+  u64 ist4;
+  u64 ist5;
+  u64 ist6;
+  u64 ist7;
+  u64 reserved3_ignore;
+  u16 reserved4_ignore;
+  // should be set to (&obj->iomap[0] - obj)
+  u16 iomap_base_addr;
+  u8 iomap[8 * 1024];
+};
+
 struct InterruptDescriptor {
   u16 offset_lo16;
   u16 selector;

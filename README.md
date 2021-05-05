@@ -21,9 +21,37 @@ It paints your EFI background with red color.
 ![red](docs/red.png)
 
 ## TODOs
-- dynamic memory allocator
-- virtual memory
-- clock interrupt
-- user space process
-- syscall
-- smp
+- memory
+   - ~~buddy page allocator~~
+   - kernel dynamic memory allocator based on buddy allocator
+   - ~~virtual memory(setup gdt,page table)~~
+
+- irq
+    - **close irq on interrupt handler**
+    - **clock interrupt**
+    - register all exception handlers/pretty exception dumper/ stack dumper
+    
+- process
+    - ~~user space process~~
+    - ~~basic syscall~~
+    - smp
+    - **fork**
+    - **exec**
+    - **load simple ELF**
+    - scheduler
+
+- fs
+    - **vfs**
+    - ~~simple in-memory file~~
+    - stdio
+
+- kernel library
+    - kernel string library
+
+- userspace library
+    - userspace syscall wrapper
+
+- IO
+    - some harddisk?
+    - some NIC ?
+    - socket?

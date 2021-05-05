@@ -65,3 +65,10 @@ void halt() {
   asm volatile ("hlt");
   __builtin_unreachable();
 }
+
+void flush_tlb() {
+  asm volatile(
+      "mov %%cr3, %%rax\t\n"
+      "mov %%rax, %%cr3\t\n"
+  :::"memory", "%rax");
+}
