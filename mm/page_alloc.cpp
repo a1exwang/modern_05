@@ -1,48 +1,16 @@
-#include <mm/page_alloc.h>
-#include <lib/string.h>
+#include <cpu_defs.h>
 #include <kernel.h>
-#include <mm/fixed_block_allocator.h>
 #include <lib/file_size.h>
+#include <lib/string.h>
 #include <lib/utils.h>
+#include <mm/page_alloc.h>
 
 constexpr u64 Log2MinSize = 16; // 64K
 constexpr u64 Log2MaxSize = 32; // 4G
 
-//struct Block {
-//  Block() = default;
-//  Block(Block *parent, u64 addr, u8 available) :parent(parent), addr(addr), available(available) {}
-//
-//  Block *buddy() const {
-//    if (parent) {
-//      if (parent->left == this) {
-//        return parent->right;
-//      } else if (parent->right == this) {
-//        return parent->left;
-//      } else {
-//        return nullptr;
-//      }
-//    } else {
-//      return nullptr;
-//    }
-//  }
-//
-//  u64 addr = 0;
-//
-//  Block *parent = nullptr;
-//  Block *left = nullptr;
-//  Block *right = nullptr;
-//
-//  Block *prev = nullptr;
-//  Block *next = nullptr;
-//
-//  u8 available = 0;
-//
-//  Block *next_available = nullptr;
-//};
 struct Block {
   Block() = default;
-  Block(u8 available) :available(available) {}
-
+  explicit Block(u8 available) :available(available) {}
 
   u8 valid = false;
   u8 available = true;
@@ -54,14 +22,13 @@ struct Block {
 struct Bucket {
   u64 log2size;
 
-  // first block is always non-null as a sentry
+  // can be null to represent empty
   Block *first_block;
 };
 
 constexpr u64 BlockSize = 16 * PAGE_SIZE;
 constexpr u64 MaxBlocks = 4UL * 1024UL * 1024UL * 1024UL / BlockSize;
 
-//using BlockAllocator = FixedBlockAllocator<Block, &Block::next_available>;
 static Block preallocated_blocks[MaxBlocks];
 
 struct BuddyAllocator {
@@ -276,28 +243,6 @@ struct BuddyAllocator {
     u64 depth = log2(get_block_offset(block) + 1);
     return root_log2size - depth;
   }
-//
-//// addr must be page aligned
-//  void add_available_root_page(u64 addr, u64 log2size) {
-//    auto &bucket = buckets[log2size - Log2MinSize];
-//
-//    Block *new_last = block_allocator->create(nullptr, addr, true);
-//    if (new_last == nullptr) {
-//      Kernel::k->panic("Failed allocate block");
-//    }
-//
-//    // append to bucket.firstBlock list
-//    auto first = bucket.firstBlock;
-//    auto last = first->prev;
-//
-//    first->prev = new_last;
-//    last->next = new_last;
-//
-//    new_last->prev = last;
-//    new_last->next = first;
-//  }
-
-//  BlockAllocator *block_allocator = nullptr;
 
   u64 phy_start;
   u64 root_log2size;
@@ -306,31 +251,13 @@ struct BuddyAllocator {
   Bucket buckets[Log2MaxSize - Log2MinSize + 1]{};
 };
 
-
-
-//static char allocator_mem[sizeof(BlockAllocator)];
 static char buddy_allocator_mem[sizeof(BuddyAllocator)];
 
 BuddyAllocator *buddy_allocator;
 
-void page_allocator_init(PageRegion *regions, u64 n_regions) {
-  // initialize block allocator
-//  auto block_allocator = new(allocator_mem) BlockAllocator(&preallocated_blocks[0], sizeof(preallocated_blocks) / sizeof(preallocated_blocks[0]));
-
-  // TODO: improve allocator to support non 2^n regions
-  // find the largest region
-  u64 max_pages = 0;
-  u64 max_pages_addr = 0;
-  for (u64 i = 0; i < n_regions; i++) {
-    u64 n_pages = regions[i].n_pages;
-    if (n_pages > max_pages) {
-      max_pages = n_pages;
-      max_pages_addr = regions[i].start;
-    }
-  }
-
+void buddy_allocator_init(u64 max_pages_addr, u64 log2size) {
   // test buddy allocator
-  buddy_allocator = new(buddy_allocator_mem) BuddyAllocator(max_pages_addr, log2(max_pages*PAGE_SIZE), preallocated_blocks, MaxBlocks);
+  buddy_allocator = new(buddy_allocator_mem) BuddyAllocator(max_pages_addr, log2size, preallocated_blocks, MaxBlocks);
   buddy_allocator->print();
 
   auto addr1 = buddy_allocator->allocate_pages(24);
@@ -361,16 +288,38 @@ void page_allocator_init(PageRegion *regions, u64 n_regions) {
   Kernel::sp() << "Buddy allocator test passed\n";
 }
 
-// allocate 2^i contiguous physical pages
-// return 0 on failure
-// returns physical address of the first page
-u64 page_alloc(u64 i) {
+class PageAllocator {
 
-  return 0;
+  // assume size = 512
+  PageDirectoryEntry *pdt;
+  // assume size = 512 * 512
+  PageTableEntry *pt;
+};
+
+void page_allocator_init(PageRegion *regions, u64 n_regions) {
+  // TODO: improve allocator to support non 2^n regions
+  // find the largest region
+  u64 max_pages = 0;
+  u64 max_pages_addr = 0;
+  for (u64 i = 0; i < n_regions; i++) {
+    u64 n_pages = regions[i].n_pages;
+    if (n_pages > max_pages) {
+      max_pages = n_pages;
+      max_pages_addr = regions[i].start;
+    }
+  }
+  auto log2size = log2(max_pages*PAGE_SIZE);
+
+  assert(max_pages_addr < IDENTITY_MAP_START, "region out of identity map region");
+  assert(max_pages_addr+(1UL<<log2size) <= IDENTITY_MAP_START, "region out of identity map region");
+  buddy_allocator_init(max_pages, log2size);
 }
 
-// release the pages
-void page_release(u64 phy_addr) {
+u64 kernel_page_alloc(u64 i) {
+  auto phy_addr = buddy_allocator->allocate_pages(i);
+  return KERNEL_START + phy_addr;
+}
 
-
+void kernel_page_release(u64 vaddr) {
+  buddy_allocator->free_pages(vaddr - KERNEL_START);
 }

@@ -2,6 +2,15 @@
 
 #include <lib/defs.h>
 
+#define PAGE_SIZE 4096UL
+#define ALIGN(N) __attribute__ ((aligned (N)))
+#define PAGES_PER_TABLE 512UL
+#define KERNEL_IMAGE_PAGES ((512UL*512UL))
+#define KERNEL_START (0xffff800000000000UL)
+#define IDENTITY_MAP_SIZE (1024UL*1024UL*1024UL - KERNEL_IMAGE_PAGES*PAGE_SIZE)
+#define IDENTITY_MAP_START (KERNEL_START+KERNEL_IMAGE_PAGES*PAGE_SIZE)
+#define IDENTITY_MAP_END (IDENTITY_MAP_START+IDENTITY_MAP_SIZE)
+
 #pragma pack(push, 1)
 struct SegmentDescriptor {
   u16 segment_limit_lo16;
@@ -50,5 +59,72 @@ struct InterruptDescriptor {
   u16 offset_mid16;
   u32 offset_hi32;
   u32 zero3;
+};
+
+struct PageTableEntry {
+  u8 p : 1;
+  u8 rw : 1;
+  u8 us : 1;
+  u8 pwt : 1;
+  u8 pcd : 1;
+  u8 a : 1;
+  u8 d : 1;
+  u8 pat : 1;
+
+  u8 g : 1;
+  u8 avl : 3;
+  u64 base_addr : 40;
+  u8 available : 7;
+  u8 reserved : 4;
+  u8 nx : 1;
+};
+
+struct PageDirectoryEntry {
+  u8 p : 1;
+  u8 rw : 1;
+  u8 us : 1;
+  u8 pwt : 1;
+  u8 pcd : 1;
+  u8 a : 1;
+  u8 ignore1 : 1;
+  u8 zero1 : 1;
+
+  u8 ignore2: 1;
+  u8 avl : 3;
+  u64 base_addr : 40;
+  u16 available : 11;
+  u8 nx : 1;
+};
+struct PageDirectoryPointerEntry {
+  u8 p : 1;
+  u8 rw : 1;
+  u8 us : 1;
+  u8 pwt : 1;
+  u8 pcd : 1;
+  u8 a : 1;
+  u8 ignore1 : 1;
+  u8 zero1 : 1;
+
+  u8 ignore2: 1;
+  u8 avl : 3;
+  u64 base_addr : 40;
+  u16 available : 11;
+  u8 nx : 1;
+};
+struct PageMappingL4Entry {
+  u8 p : 1;
+  u8 rw : 1;
+  u8 us : 1;
+  u8 pwt : 1;
+  u8 pcd : 1;
+  u8 a : 1;
+  u8 ignore1 : 1;
+  u8 zero1 : 1;
+
+  u8 zero2: 1;
+  u8 avl : 3;
+  u64 base_addr : 40;
+  u16 available : 11;
+  u8 nx : 1;
 };
 #pragma pack(pop)

@@ -6,6 +6,7 @@
 #include "efiConsoleControl.h"
 #include "efiUgaDraw.h"
 #include "include/init/efi_info.h"
+#include "include/cpu_defs.h"
 
 unsigned short port = 0x3f8;
 
@@ -291,7 +292,6 @@ void copy(char *target, char *src, uint64_t size) {
   }
 }
 
-#define KERNEL_START (0xffff800000000000UL)
 
 struct EFIServicesInfo efi_info;
 

@@ -1,78 +1,5 @@
 #include "lib/defs.h"
-
-#pragma pack(push, 1)
-struct PageTableEntry {
-  u8 p : 1;
-  u8 rw : 1;
-  u8 us : 1;
-  u8 pwt : 1;
-  u8 pcd : 1;
-  u8 a : 1;
-  u8 d : 1;
-  u8 pat : 1;
-
-  u8 g : 1;
-  u8 avl : 3;
-  u64 base_addr : 40;
-  u8 available : 7;
-  u8 reserved : 4;
-  u8 nx : 1;
-};
-
-struct PageDirectoryEntry {
-  u8 p : 1;
-  u8 rw : 1;
-  u8 us : 1;
-  u8 pwt : 1;
-  u8 pcd : 1;
-  u8 a : 1;
-  u8 ignore1 : 1;
-  u8 zero1 : 1;
-
-  u8 ignore2: 1;
-  u8 avl : 3;
-  u64 base_addr : 40;
-  u16 available : 11;
-  u8 nx : 1;
-};
-struct PageDirectoryPointerEntry {
-  u8 p : 1;
-  u8 rw : 1;
-  u8 us : 1;
-  u8 pwt : 1;
-  u8 pcd : 1;
-  u8 a : 1;
-  u8 ignore1 : 1;
-  u8 zero1 : 1;
-
-  u8 ignore2: 1;
-  u8 avl : 3;
-  u64 base_addr : 40;
-  u16 available : 11;
-  u8 nx : 1;
-};
-struct PageMappingL4Entry {
-  u8 p : 1;
-  u8 rw : 1;
-  u8 us : 1;
-  u8 pwt : 1;
-  u8 pcd : 1;
-  u8 a : 1;
-  u8 ignore1 : 1;
-  u8 zero1 : 1;
-
-  u8 zero2: 1;
-  u8 avl : 3;
-  u64 base_addr : 40;
-  u16 available : 11;
-  u8 nx : 1;
-};
-#pragma pack(pop)
-
-#define PAGE_SIZE 4096
-#define ALIGN(N) __attribute__ ((aligned (N)))
-#define PAGES_PER_TABLE 512
-#define KERNEL_IMAGE_PAGES ((512*512))
+#include "include/cpu_defs.h"
 
 // map 0-64M -> KERNEL_START -> KERNEL_START+64M
 struct KernelImagePageTable {
@@ -89,8 +16,8 @@ void puts(const char *s);
 void dump_pagetable(const u64* pml4t) {
   // 9 | 9 | 9 | 9 | 12
   u64 total_pages = 0;
-  int pde_printed = 0;
-  int pte_printed = 0;
+//  int pde_printed = 0;
+//  int pte_printed = 0;
   for (u64 i = 0; i < 512; i++) {
     if (pml4t[i] & 0x1) {
 //      Kernel::sp() << "pml4e " << i << " " << pml4t[i] << "\n";
@@ -157,15 +84,14 @@ void setup_kernel_image_page_table(u64 kernelPhyStart) {
     t.pdt[i].base_addr = ((u64)&t.pt[PAGES_PER_TABLE * i]) >> 12;
   }
 
-//  for (u64 i = 0; i < sizeof(t.pt) / sizeof(t.pt[0]); i++) {
-//    t.pt[i].p = 1;
-//    t.pt[i].rw = 1;
-//    t.pt[i].base_addr = i;
-//  }
-
-  // only map the first 64MiB for kernel image file
-  // other kernel space address is not mapped
-  for (u64 i = 0; i < (64*1024*1024 / 4096); i++) {
+  // [KERNEL_START, KERNEL_START+64MiB) -> kernel image file, non-identity mapping, not manaaged by allocator
+  // [KERNEL_START+64MiB, KERNEL_START+1G) -> identity mapping, available physical pages in this range are managed by allocator
+  for (u64 i = 0; i < sizeof(t.pt) / sizeof(t.pt[0]); i++) {
+    t.pt[i].p = 1;
+    t.pt[i].rw = 1;
+    t.pt[i].base_addr = i;
+  }
+  for (u64 i = 0; i < KERNEL_IMAGE_PAGES; i++) {
     t.pt[i].p = 1;
     t.pt[i].rw = 1;
     t.pt[i].base_addr = (kernelPhyStart/4096) + i;
@@ -176,6 +102,6 @@ void setup_kernel_image_page_table(u64 kernelPhyStart) {
   puti((u64)cr3);
   puts("\n");
   asm volatile("movq %0, %%cr3" : :"r"(cr3));
-  dump_pagetable(t.pml4t);
+  dump_pagetable((const u64*)t.pml4t);
 }
 

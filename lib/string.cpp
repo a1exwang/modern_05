@@ -14,7 +14,7 @@ void memcpy(void *dst, const void *src, u64 size) {
   }
 }
 
-void assert(int assumption, const char *s) {
+void do_assert(int assumption, const char *s) {
   if (!assumption) {
     Kernel::k->panic(s);
   }
