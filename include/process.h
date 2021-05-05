@@ -2,6 +2,7 @@
 #include <lib/defs.h>
 
 #pragma pack(push, 1)
+// If you update this struct, you should update _irq_handler and _return_from_syscall in irq.S
 struct Context {
   u64 ds;
   u64 es;

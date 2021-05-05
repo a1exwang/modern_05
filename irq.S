@@ -91,8 +91,8 @@ _irq_handler:
     movq %rsp, %rdi
     call store_current_thread_context
 
-    movq 152(%rsp), %rdi
-    movq 160(%rsp), %rsi
+    movq 160(%rsp), %rdi
+    movq 168(%rsp), %rsi
     call irq_handler
 
     call schedule

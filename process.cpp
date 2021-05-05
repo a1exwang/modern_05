@@ -109,12 +109,16 @@ class Process {
 
   void kernel_entrypoint() {
     Kernel::sp() << "starting kernel thread '" << (const char*)name << "'\n";
+    if (tmp_start) {
+      Kernel::sp() << "has tmp_start, going for it" << "\n";
+      tmp_start();
+    }
     halt();
   }
 
   // id = 0 for empty process slot
   u64 id;
-  ProcessState state;
+  ProcessState state = ProcessState::Wait;
   char name[32];
   // phy addr of the start of this Process object
   u64 start_phy = 0;
@@ -134,10 +138,13 @@ class Process {
   u64 user_stack_phy_addr;
   u8 *user_stack;
   u64 user_stack_size = USER_STACK_SIZE;
+
+  void (*tmp_start)() = 0;
 };
 
 u64 next_pid = 1;
 Process *processes[MAX_PROCESS];
+
 void create_process() {
   auto pid = next_pid++;
   // TODO: optimize with low memory consumption
@@ -152,14 +159,54 @@ void create_process() {
   processes[pid] = process;
 }
 
+void thread2_start() {
+  u64 i = 0;
+  while (true) {
+    u64 reg_new;
+    register u64 reg asm("rax");
+    reg = 0x3332;
+    do_syscall();
+    __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
+    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
+    i++;
+  }
+}
+
+void main_start() {
+  Kernel::sp() << "main process started\n";
+
+  Kernel::sp() << "main process creating process 2\n";
+  create_process();
+  auto new_proc = processes[next_pid-1];
+  new_proc->tmp_start = thread2_start;
+  new_proc->name[0] = '2';
+
+  Kernel::sp() << "main process working\n";
+  u64 i = 0;
+  while (true) {
+    u64 reg_new;
+    register u64 reg asm("rax");
+    reg = (u64)0x2223;
+    do_syscall();
+    __asm__ __volatile__("movq %%rax, %0" :"=r"(reg_new));
+    Kernel::sp() << SerialPort::IntRadix::Hex << "main process run " << i << " " << reg_new << "\n";
+    i++;
+  }
+}
+
 void process_init() {
   memset(processes, 0, sizeof(processes));
   next_pid = 1;
   current_pid = 1;
   create_process();
+
+  auto main_process = processes[1];
+  main_process->tmp_start = main_start;
 }
 
 void schedule() {
+  processes[current_pid]->state = ProcessState::Wait;
+
   while (true) {
     if (current_pid == next_pid) {
       current_pid = 1;
@@ -181,34 +228,6 @@ void store_current_thread_context(Context *context) {
       context,
       sizeof(Context)
   );
-}
-
-void main_thread_start() {
-  u64 i = 0;
-
-  Kernel::sp() << "main thread started\n";
-  while (true) {
-    u64 reg_new;
-    register u64 reg asm("rax");
-    reg = (u64)0x2223;
-    do_syscall();
-    while(1);
-    __asm__ __volatile__("movq %%rax, %0" :"=r"(reg_new));
-//    Kernel::sp() << SerialPort::IntRadix::Hex << "thread1 run " << i << " " << reg_new << "\n";
-    i++;
-  }
-}
-void thread2_start() {
-  u64 i = 0;
-  while (true) {
-    u64 reg_new;
-    register u64 reg asm("rax");
-    reg = 0x3332;
-    do_syscall();
-    __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
-//    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
-    i++;
-  }
 }
 
 void dump_thread_context(const Context &context) {
