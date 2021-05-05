@@ -35,7 +35,7 @@ using ThreadFunction = void (*)();
 
 class Thread {
  public:
-  Thread(u64 id, u16 code_selector, u16 data_selector, ThreadFunction start);
+  Thread(u64 id, ThreadFunction start);
 
   void store_context(ThreadContext *old_context);
  public:

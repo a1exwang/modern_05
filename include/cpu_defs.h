@@ -13,26 +13,26 @@
 
 #pragma pack(push, 1)
 struct SegmentDescriptor {
-  u16 segment_limit_lo16;
-  u16 base_addr_lo16;
-  u8 base_addr_mid8;
+  u16 __segment_limit_lo16; // unused
+  u16 __base_addr_lo16; // unused
+  u8 __base_addr_mid8; // unused
 
-  u8 accessed : 1;
-  u8 wr : 1;
-  u8 dc : 1;
-  u8 exec : 1;
-  u8 reserved : 1;
-  u8 dpl : 2;
+  u8 __accessed : 1; // unused
+  u8 __wr : 1; // unused
+  u8 _dc : 1; // only code, please set to 0
+  u8 __exec : 1; // unused, 1 for code segment
+  u8 __reserved : 1; // unused == 1
+  u8 _dpl : 2;// only for code segment
   u8 present : 1;
 
-  u8 segment_limit_hi4 : 4;
+  u8 __segment_limit_hi4 : 4; // unused
 
-  u8 avl : 1;
-  u8 long_mode : 1;
-  u8 default_operand_size : 1;
-  u8 granularity : 1;
+  u8 __avl : 1; // unused
+  u8 _long_mode : 1; // only code, set to 1
+  u8 _default_operand_size : 1; // only code, set to 0
+  u8 __granularity : 1; // unused
 
-  u8 base_addr_hi8;
+  u8 __base_addr_hi8; // unused
 };
 
 enum DescriptorType {

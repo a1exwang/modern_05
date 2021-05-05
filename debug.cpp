@@ -13,14 +13,13 @@ void print_segment_descriptor(SerialPort &serial_port, u16 selector, void *gdt) 
   auto &desc = *reinterpret_cast<const SegmentDescriptor*>((char*)gdt+ (selector & 0xfff8));
 
   serial_port << "Segment descriptor 0x" << SerialPort::IntRadix::Hex << selector << " ";
-  u32 base_addr = (u32)desc.base_addr_lo16 | ((u32)desc.base_addr_mid8 << 16) | ((u32)desc.base_addr_hi8 << 24);
 
 //  serial_port << "  base_addr 0x" << SerialPort::IntRadix::Hex << base_addr;
-  serial_port << " dpl " << SerialPort::IntRadix::Hex << desc.dpl << " ";
+  serial_port << " dpl " << SerialPort::IntRadix::Hex << desc._dpl << " ";
 
 //  serial_port << "  avl 0x" << SerialPort::IntRadix::Hex << desc.dpl;
-  serial_port << "long_mode " << SerialPort::IntRadix::Hex << desc.long_mode << " ";
-  serial_port << "default_operand_size " << SerialPort::IntRadix::Hex << desc.default_operand_size << "\n";
+  serial_port << "long_mode " << SerialPort::IntRadix::Hex << desc._long_mode << " ";
+  serial_port << "default_operand_size " << SerialPort::IntRadix::Hex << desc._default_operand_size << "\n";
 //  serial_port << "  granularity 0x" << SerialPort::IntRadix::Hex << desc.granularity;
 }
 

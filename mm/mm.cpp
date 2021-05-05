@@ -1,10 +1,11 @@
-#include <mm/mm.h>
+#include <cpu_defs.h>
+#include <efi/efi.h>
+#include <efi/efidef.h>
+#include <kernel.h>
 #include <lib/defs.h>
 #include <lib/serial_port.h>
 #include <lib/string.h>
-#include <kernel.h>
-#include <efi/efi.h>
-#include <efi/efidef.h>
+#include <mm/mm.h>
 #include <mm/page_alloc.h>
 
 #define CR4_PSE (1u<<4u)
@@ -69,12 +70,98 @@ void calculate_total_pages(const u64* pml4t) {
   Kernel::sp() << "total pages: 0x" << SerialPort::IntRadix::Hex << total_pages << '\n';
 }
 
-u8 kernel_gdt[0x1000];
+SegmentDescriptor kernel_gdt[128];
+
+extern "C" void __gdt_init_next_instruction();
+
+static void load_kernel_gdt() {
+  load_gdt(std::make_tuple(kernel_gdt, sizeof(kernel_gdt)-1));
+}
 
 void gdt_init() {
-  auto [gdt, limit] = get_gdt();
-  memcpy(kernel_gdt, gdt, limit+1);
-  load_gdt(std::make_tuple(kernel_gdt, sizeof(kernel_gdt)-1));
+
+  {
+    memset(kernel_gdt, 0, sizeof(kernel_gdt));
+    auto [gdt, limit] = get_gdt();
+    memcpy(kernel_gdt, gdt, limit+1);
+    // move GDT to kernel image file space
+    load_kernel_gdt();
+  }
+
+  uint64_t cs,ds;
+  asm volatile ("mov %%cs, %0": "=r"(cs));
+  asm volatile ("mov %%ds, %0": "=r"(ds));
+  if (cs != KERNEL_CODE_SELECTOR) {
+    Kernel::sp() << "setting cs = 0x" << SerialPort::IntRadix::Hex << KERNEL_CODE_SELECTOR << "\n";
+
+    u64 i = KERNEL_CODE_SEGMENT_INDEX;
+    memset(&kernel_gdt[i], 0, sizeof(kernel_gdt[i]));
+    kernel_gdt[i].present = 1;
+    kernel_gdt[i].__exec = 1;
+    kernel_gdt[i].__reserved = 1;
+    kernel_gdt[i]._long_mode = 1;
+    kernel_gdt[i]._default_operand_size = 0;
+    kernel_gdt[i]._dpl = 0;
+    load_kernel_gdt();
+
+    u64 next_addr = (u64)__gdt_init_next_instruction;
+    u64 selector_tmp = KERNEL_CODE_SELECTOR;
+    // dirty trick to load cs register
+    asm volatile("movq %1, %%rax\t\n"
+                 "pushq %%rax\t\n"
+                 "movq %0, %%rax\t\n"
+                 "pushq %%rax\t\n"
+                 "lretq\t\n"
+                 "__gdt_init_next_instruction: nop\t\n"
+    :
+    :"m"(next_addr), "m"(selector_tmp)
+    :"%rax");
+  }
+
+  if (ds != KERNEL_DATA_SELECTOR) {
+    Kernel::sp() << "setting all data selectors to 0x" << SerialPort::IntRadix::Hex << KERNEL_DATA_SELECTOR << "\n";
+    u64 i = KERNEL_DATA_SEGMENT_INDEX;
+    memset(&kernel_gdt[i], 0, sizeof(kernel_gdt[0]));
+    kernel_gdt[i].present = 1;
+    kernel_gdt[i].__exec = 0;
+    kernel_gdt[i].__reserved = 1;
+
+    // NOTE: this field is required (at least in qemu and virtualbox)
+    // although the AMD64 manual says it is unused.
+    // Otherwise it will cause #GP
+    kernel_gdt[i].__wr = 1;
+
+    load_kernel_gdt();
+    asm volatile(
+      "mov %0, %%ds\t\n"
+      "mov %0, %%ss\t\n"
+      "mov %0, %%es\t\n"
+      "mov $0, %%rax\t\n"
+      "mov %%ax, %%fs\t\n"
+      "mov %%ax, %%gs\t\n"
+      :
+      :"r"(KERNEL_DATA_SELECTOR)
+      :"%rax"
+    );
+  }
+
+  Kernel::sp() << "setting up user code/data selectors\n";
+  u64 i = USER_CODE_SEGMENT_INDEX;
+  memset(&kernel_gdt[i], 0, sizeof(kernel_gdt[i]));
+  kernel_gdt[i].present = 1;
+  kernel_gdt[i].__exec = 1;
+  kernel_gdt[i].__reserved = 1;
+  kernel_gdt[i]._long_mode = 1;
+  kernel_gdt[i]._default_operand_size = 0;
+  kernel_gdt[i]._dpl = 3;
+
+  i = USER_DATA_SEGMENT_INDEX;
+  memset(&kernel_gdt[i], 0, sizeof(kernel_gdt[i]));
+  kernel_gdt[i].present = 1;
+  kernel_gdt[i].__exec = 0;
+  kernel_gdt[i].__reserved = 1;
+  kernel_gdt[i].__wr = 1;
+  kernel_gdt[i]._dpl = 3;
 }
 
 //extern "C" void setup_kernel_image_page_table();

@@ -24,13 +24,16 @@ std::tuple<void *, u16> get_gdt() {
   return std::make_tuple(offset, limit);
 }
 
+
 void load_gdt(std::tuple<void *, u16> gdtr_input) {
   u8 gdtr[10];
   auto [offset, limit] = gdtr_input;
 
   *(u16*)&gdtr[0] = limit;
   *(u64*)&gdtr[2] = (u64)offset;
-  __asm__ __volatile__("lgdt %0"
+
+  __asm__ __volatile__(
+      "lgdt %0\n\t"
   :
   :"m"(gdtr)
   :"memory");

@@ -4,6 +4,7 @@
 #include <irq.h>
 #include <syscall.h>
 #include "debug.h"
+#include <mm/mm.h>
 
 u64 current_thread_id = 0;
 u64 total_threads = 2;
@@ -15,8 +16,8 @@ u8 threads_space[32 * sizeof(Thread)];
 
 void thread_start() {
   auto *threads = (Thread*)threads_space;
-  new(&threads[1]) Thread(1, 0x38, 0x30, main_thread_start);
-  new(&threads[2]) Thread(2, 0x38, 0x30, thread2_start);
+  new(&threads[1]) Thread(1, main_thread_start);
+  new(&threads[2]) Thread(2, thread2_start);
 
   current_thread_id = 1;
 }
@@ -69,10 +70,10 @@ void dump_thread_context(const ThreadContext &context) {
 void Thread::store_context(ThreadContext *old_context) {
   memcpy(&this->context, old_context, sizeof(ThreadContext));
 }
-Thread::Thread(unsigned long id, unsigned short code_selector, unsigned short data_selector, ThreadFunction start) :id(id), start(start) {
+Thread::Thread(unsigned long id, ThreadFunction start) :id(id), start(start) {
   memset(&context, 0, sizeof(context));
-  context.cs = code_selector;
-  context.ss = data_selector;
+  context.cs = KERNEL_CODE_SELECTOR;
+  context.ss = KERNEL_DATA_SELECTOR;
   context.rsp = (u64)stack_bottom;
   context.rip = (u64)start;
 }
