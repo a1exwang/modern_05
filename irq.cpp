@@ -4,6 +4,7 @@
 #include <kernel.h>
 #include "debug.h"
 #include <kthread.h>
+#include <irq.h>
 
 extern "C" void _default_irq_handler();
 
@@ -36,16 +37,13 @@ extern "C" void timer_irq_handler() {
 u8 interrupt_stack[4096];
 extern "C" constexpr u8 *_interrupt_stack_bottom = &interrupt_stack[sizeof(interrupt_stack)];
 
-extern "C" void irq_handler(u64 irq_num, u64 error_code, ThreadContext *context) {
+extern "C" void irq_handler(u64 irq_num, u64 error_code) {
   if (irq_num == 32) {
     timer_irq_handler();
-    u64 esp;
-    register u64 esp_val asm("esp");
-    Kernel::k->serial_port_ << "esp = " << esp_val << "\n";
-  } else if (irq_num == 42) {
-    store_current_thread_context(context);
-    schedule_next_thread();
+  } else if (irq_num == IRQ_SYSCALL) {
+    // empty implementation
   } else {
+    auto context = &get_current_thread()->context;
     Kernel::k->serial_port_
         << "IRQ = " << irq_num << " error = " << error_code << " thread = " << current_thread_id << "\n"
         << "rip = " << context->rip << " rsp = " << context->rsp << "\n";

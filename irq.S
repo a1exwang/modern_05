@@ -19,11 +19,12 @@
 .global _syscall_irq_handler
 .global _default_irq_handler
 .global irq_handler
-.global _schedule
+.global return_from_syscall
 .global _interrupt_stack_bottom
+.global schedule
 
 # context from %rdi
-_schedule:
+return_from_syscall:
     mov %rdi, %rsp
 
     pop %r15
@@ -62,10 +63,18 @@ _irq_handler:
     push %r14
     push %r15
 
+    movq %rsp, %rdi
+    call store_current_thread_context
+
     movq 120(%rsp), %rdi
     movq 128(%rsp), %rsi
-    movq %rsp, %rdx
     call irq_handler
+
+    call schedule
+
+    call get_current_thread_context
+    mov %rax, %rdi
+    jmp return_from_syscall
 
 # divide by 0
 _de_irq_handler:

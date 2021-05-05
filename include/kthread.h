@@ -44,8 +44,6 @@ class Thread {
   ThreadContext context;
   u8 stack[4 * 1024];
   u8 stack_bottom[0];
-
-  void schedule();
 };
 
 Thread *get_thread(u64 id);
@@ -55,8 +53,12 @@ void thread2_start();
 
 void thread_start();
 
-void schedule_next_thread();
-void store_current_thread_context(ThreadContext *context);
+extern "C" {
+  void schedule();
+  void store_current_thread_context(ThreadContext *context);
+  Thread *get_current_thread();
+  ThreadContext *get_current_thread_context();
+}
 
 extern u64 current_thread_id;
 extern u64 total_threads;

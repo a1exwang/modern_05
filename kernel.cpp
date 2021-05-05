@@ -12,6 +12,7 @@
 #include <mm/mm.h>
 #include "debug.h"
 #include <init/efi_info.h>
+#include <kthread.h>
 
 Kernel *Kernel::k;
 
@@ -38,6 +39,8 @@ void Kernel::start() {
   mm_init();
   irq_init();
   thread_start();
+
+  return_from_syscall(&get_current_thread()->context);
 
   panic("ERROR: kernel::start() should not return, but it returns");
 }

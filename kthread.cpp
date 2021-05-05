@@ -2,6 +2,7 @@
 #include <kernel.h>
 #include <lib/string.h>
 #include <irq.h>
+#include <syscall.h>
 #include "debug.h"
 
 u64 current_thread_id = 0;
@@ -18,17 +19,13 @@ void thread_start() {
   new(&threads[2]) Thread(2, 0x38, 0x30, thread2_start);
 
   current_thread_id = 1;
-  threads[1].schedule();
 }
-void schedule_next_thread() {
+void schedule() {
   if (current_thread_id == total_threads) {
     current_thread_id = 1;
   } else {
     current_thread_id++;
   }
-
-  Thread *t = get_thread(current_thread_id);
-  t->schedule();
 }
 void store_current_thread_context(ThreadContext *context) {
   Thread *t = get_thread(current_thread_id);
@@ -43,7 +40,7 @@ void main_thread_start() {
     u64 reg_new;
     register u64 reg asm("rax");
     reg = (u64)0x2223;
-    __asm__ __volatile__("int $42");
+    do_syscall();
     __asm__ __volatile__("movq %%rax, %0" :"=r"(reg_new));
 //    Kernel::sp() << SerialPort::IntRadix::Hex << "thread1 run " << i << " " << reg_new << "\n";
     i++;
@@ -55,7 +52,7 @@ void thread2_start() {
     u64 reg_new;
     register u64 reg asm("rax");
     reg = 0x3332;
-    __asm__ __volatile__("int $42");
+    do_syscall();
     __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
 //    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
     i++;
@@ -72,14 +69,18 @@ void dump_thread_context(const ThreadContext &context) {
 void Thread::store_context(ThreadContext *old_context) {
   memcpy(&this->context, old_context, sizeof(ThreadContext));
 }
-void Thread::schedule() {
-//  Kernel::sp() << "schedule() " << id << " " << context.rax << "\n";
-  ::_schedule(&context);
-}
 Thread::Thread(unsigned long id, unsigned short code_selector, unsigned short data_selector, ThreadFunction start) :id(id), start(start) {
   memset(&context, 0, sizeof(context));
   context.cs = code_selector;
   context.ss = data_selector;
   context.rsp = (u64)stack_bottom;
   context.rip = (u64)start;
+}
+
+Thread *get_current_thread() {
+  auto *threads = (Thread*)threads_space;
+  return &threads[current_thread_id];
+}
+ThreadContext *get_current_thread_context() {
+  return &get_current_thread()->context;
 }
