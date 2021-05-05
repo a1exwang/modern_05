@@ -78,6 +78,24 @@ static void load_kernel_gdt() {
   load_gdt(std::make_tuple(kernel_gdt, sizeof(kernel_gdt)-1));
 }
 
+struct KernelImagePageTable {
+  PageMappingL4Entry pml4t[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
+  PageDirectoryPointerEntry pdpt[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
+  PageDirectoryEntry pdt[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
+  PageTableEntry pt[KERNEL_SPACE_PAGES] ALIGN(PAGE_SIZE);
+};
+
+KernelImagePageTable t ALIGN(PAGE_SIZE);
+
+u64 get_kernel_pdpt_phy_addr() {
+//  return ((u64)&t.pml4t[256] - KERNEL_START) + Kernel::k->efi_info.kernel_physical_start;
+
+  u64 cr3;
+  asm volatile("mov %%cr3,%0" : "=r" (cr3));
+  auto pml4t = reinterpret_cast<const u64*>((cr3 & 0x000ffffffffff000) + KERNEL_START);
+  return pml4t[256] & 0xfffffffffffff000;
+}
+
 void gdt_init() {
 
   {
@@ -166,13 +184,56 @@ void gdt_init() {
 
 //extern "C" void setup_kernel_image_page_table();
 
-void page_table_init() {
-  Kernel::sp() << "setting up page table \n";
-//  setup_kernel_image_page_table();
-  auto kernel_addr = ((u64)&global_test + 0xffff800000000000ul);
-  Kernel::sp() << "end test, accessing kernal space address *(" << kernel_addr << ") = " << *(u64*)kernel_addr << "\n";
+void setup_page_table_in_kernel_space() {
+  // copy page to to kernel space
+  u64 cr3;
+  asm volatile("mov %%cr3,%0" : "=r" (cr3));
+  auto pml4t = reinterpret_cast<const u64*>((cr3 & 0xfffffffffffff000) + KERNEL_START);
+
+  // setup mapping again;
+  memset(&t, 0, sizeof(t));
+
+  auto kernel_start_phy = Kernel::k->efi_info.kernel_physical_start;
+
+  t.pml4t[256].p = 1;
+  t.pml4t[256].rw = 1;
+  t.pml4t[256].base_addr = ((u64)(&t.pdpt[0])-KERNEL_START + kernel_start_phy) >> 12;
+
+  t.pdpt[0].p = 1;
+  t.pdpt[0].rw = 1;
+  t.pdpt[0].base_addr = ((u64)(&t.pdt[0])-KERNEL_START + kernel_start_phy) >> 12;
+
+  for (u64 i = 0; i < PAGES_PER_TABLE; i++) {
+    t.pdt[i].p = 1;
+    t.pdt[i].rw = 1;
+    t.pdt[i].base_addr = ((u64)(&t.pt[i * PAGES_PER_TABLE])-KERNEL_START+kernel_start_phy) >> 12;
+  }
+
+  // kernel identity mapping
+  for (u64 i = 0; i < KERNEL_SPACE_PAGES; i++) {
+    t.pt[i].p = 1;
+    t.pt[i].rw = 1;
+    t.pt[i].base_addr = i;
+  }
+
+  // kernel image
+  for (u64 i = 0; i < KERNEL_IMAGE_PAGES; i++) {
+    t.pt[i].p = 1;
+    t.pt[i].rw = 1;
+    t.pt[i].base_addr = (kernel_start_phy>>12) + i;
+  }
+
+  // cr3 needs to by physical addr
+  auto vaddr = (u64)&t.pml4t;
+  cr3 = (vaddr - KERNEL_START) + Kernel::k->efi_info.kernel_physical_start;
+
+  Kernel::sp() << "moving page table to kernel, new cr3 = 0x" << SerialPort::IntRadix::Hex << cr3 << "\n";
+  asm volatile("mov %0,%%cr3" : :"r" (cr3));
 }
 
+void page_table_init() {
+//  setup_page_table_in_kernel_space();
+}
 
 PageRegion available_memory[1024];
 u64 n_available_regions;
@@ -215,10 +276,10 @@ void mm_init() {
   calculate_total_pages(pml4t);
 
   gdt_init();
+  page_table_init();
 
   dump_efi_info();
 
   page_allocator_init(available_memory, n_available_regions);
 
-//  page_table_init();
 }

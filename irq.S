@@ -36,6 +36,9 @@ return_from_syscall:
     pop %rax
     mov %ax, %gs
 
+    pop %rax
+    mov %rax, %cr3
+
     pop %r15
     pop %r14
     pop %r13
@@ -72,6 +75,9 @@ _irq_handler:
     push %r14
     push %r15
 
+    mov %cr3, %rax
+    push %rax
+
     xor %rax, %rax
     mov %gs, %ax
     push %rax
@@ -91,7 +97,7 @@ _irq_handler:
 
     call schedule
 
-    call get_current_thread_context
+    call current_context
     mov %rax, %rdi
     jmp return_from_syscall
 

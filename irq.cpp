@@ -3,7 +3,7 @@
 #include <lib/string.h>
 #include <kernel.h>
 #include "debug.h"
-#include <kthread.h>
+#include <process.h>
 #include <irq.h>
 
 extern "C" void _default_irq_handler();
@@ -43,9 +43,9 @@ extern "C" void irq_handler(u64 irq_num, u64 error_code) {
   } else if (irq_num == IRQ_SYSCALL) {
     // empty implementation
   } else {
-    auto context = &get_current_thread()->context;
+    auto context = current_context();
     Kernel::k->serial_port_
-        << "IRQ = 0x" << SerialPort::IntRadix::Hex << irq_num << " error = 0x" << error_code << " thread = 0x" << current_thread_id << "\n"
+        << "IRQ = 0x" << SerialPort::IntRadix::Hex << irq_num << " error = 0x" << error_code << " thread = 0x" << current_pid << "\n"
         << "rip = 0x" << context->rip << " rsp = 0x" << context->rsp << "\n";
 
     Kernel::k->panic("unhandled exception");

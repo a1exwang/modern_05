@@ -6,7 +6,7 @@ struct KernelImagePageTable {
   struct PageMappingL4Entry pml4t[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
   struct PageDirectoryPointerEntry pdpt[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
   struct PageDirectoryEntry pdt[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
-  struct PageTableEntry pt[KERNEL_IMAGE_PAGES] ALIGN(PAGE_SIZE);
+  struct PageTableEntry pt[KERNEL_SPACE_PAGES] ALIGN(PAGE_SIZE);
 };
 
 struct KernelImagePageTable t ALIGN(PAGE_SIZE);
@@ -78,7 +78,7 @@ void setup_kernel_image_page_table(u64 kernelPhyStart) {
   t.pdpt[0].rw = 1;
   t.pdpt[0].base_addr = ((u64)(&t.pdt)) >> 12;
 
-  for (u64 i = 0; i < KERNEL_IMAGE_PAGES / PAGES_PER_TABLE; i++) {
+  for (u64 i = 0; i < PAGES_PER_TABLE; i++) {
     t.pdt[i].p = 1;
     t.pdt[i].rw = 1;
     t.pdt[i].base_addr = ((u64)&t.pt[PAGES_PER_TABLE * i]) >> 12;
@@ -86,7 +86,7 @@ void setup_kernel_image_page_table(u64 kernelPhyStart) {
 
   // [KERNEL_START, KERNEL_START+64MiB) -> kernel image file, non-identity mapping, not manaaged by allocator
   // [KERNEL_START+64MiB, KERNEL_START+1G) -> identity mapping, available physical pages in this range are managed by allocator
-  for (u64 i = 0; i < sizeof(t.pt) / sizeof(t.pt[0]); i++) {
+  for (u64 i = 0; i < KERNEL_SPACE_PAGES; i++) {
     t.pt[i].p = 1;
     t.pt[i].rw = 1;
     t.pt[i].base_addr = i;

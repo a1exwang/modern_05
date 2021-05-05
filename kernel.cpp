@@ -12,7 +12,7 @@
 #include <mm/mm.h>
 #include "debug.h"
 #include <init/efi_info.h>
-#include <kthread.h>
+#include <process.h>
 
 Kernel *Kernel::k;
 
@@ -29,7 +29,7 @@ void kernel_start(EFIServicesInfo *efi_info) {
 }
 
 }
-void thread_start();
+void process_init();
 
 void Kernel::start() {
   SerialPort port;
@@ -38,9 +38,9 @@ void Kernel::start() {
   debug_init();
   mm_init();
   irq_init();
-  thread_start();
+  process_init();
 
-  return_from_syscall(&get_current_thread()->context);
+  return_from_syscall(current_context());
 
   panic("ERROR: kernel::start() should not return, but it returns");
 }

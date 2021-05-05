@@ -349,6 +349,7 @@ EntrypointFunc LoadKernel(EFI_SYSTEM_TABLE* SystemTable, char *phyKernelStart, u
   EntrypointFunc entrypoint = ehdr->e_entry;
   char *kernelEntry = phyKernelStart + ((uint64_t)entrypoint - KERNEL_START);
 
+  Print(L"kernel phy start 0x%lx\n", phyKernelStart);
   efi_info.kernel_physical_start = (uint64_t)phyKernelStart;
   efi_info.kernel_physical_size = kernel_max_size;
 
@@ -432,7 +433,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   Print(L"cs: %04lx\n", result);
 
   EFI_PHYSICAL_ADDRESS PhysicalBuffer;
-  UINT64 AllocSize = (1 + 128) * 1024 * 1024;
+  UINT64 AllocSize = (1 + 32) * 1024 * 1024;
   UINTN Pages = AllocSize / 4096;
   EFI_STATUS status = efi_call4(
       SystemTable->BootServices->AllocatePages,

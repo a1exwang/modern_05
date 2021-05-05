@@ -2,7 +2,7 @@
 #include <lib/defs.h>
 #include <kernel.h>
 
-void memset(void *data, u8 value, u64 size) {
+void memset(void *data, int value, u64 size) {
   for (u64 i = 0; i < size; i++) {
     ((u8*)data)[i] = value;
   }

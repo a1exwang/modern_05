@@ -5,9 +5,6 @@
 #include <lib/utils.h>
 #include <mm/page_alloc.h>
 
-constexpr u64 Log2MinSize = 16; // 64K
-constexpr u64 Log2MaxSize = 32; // 4G
-
 struct Block {
   Block() = default;
   explicit Block(u8 available) :available(available) {}
@@ -308,11 +305,17 @@ void page_allocator_init(PageRegion *regions, u64 n_regions) {
       max_pages_addr = regions[i].start;
     }
   }
+
+  if (max_pages_addr < IDENTITY_MAP_PHY_START) {
+    auto unusable = IDENTITY_MAP_PHY_START - max_pages_addr;
+    max_pages_addr = IDENTITY_MAP_PHY_START;
+    max_pages -= unusable/PAGE_SIZE;
+  }
   auto log2size = log2(max_pages*PAGE_SIZE);
 
-  assert(max_pages_addr < IDENTITY_MAP_START, "region out of identity map region");
-  assert(max_pages_addr+(1UL<<log2size) <= IDENTITY_MAP_START, "region out of identity map region");
-  buddy_allocator_init(max_pages, log2size);
+  assert(max_pages_addr >= IDENTITY_MAP_PHY_START, "region out of identity map region");
+  assert(max_pages_addr+(1UL<<log2size) <= IDENTITY_MAP_PHY_END, "region out of identity map region");
+  buddy_allocator_init(max_pages_addr, log2size);
 }
 
 void *kernel_page_alloc(u64 i) {
