@@ -11,177 +11,6 @@
 
 u64 current_pid = 0;
 
-constexpr u64 MAX_PROCESS = 1024;
-constexpr u64 THREAD_KERNEL_STACK_SIZE = 16*PAGE_SIZE;
-constexpr u64 PROCESS_MAX_USER_PAGES = 512*512;
-
-constexpr u64 USER_STACK_SIZE = 1024*1024;
-constexpr u64 USER_IMAGE_SIZE = 1024*1024;
-
-enum ProcessState {
-  Wait,
-  Running
-};
-
-u64 get_kernel_pdpt_phy_addr();
-
-#pragma pack(push, 1)
-struct PageTabletSructures {
-  // page table for the process
-  PageMappingL4Entry pml4t[PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
-  PageDirectoryPointerEntry pdpt[PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
-  PageDirectoryEntry pdt[PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
-  PageTableEntry pt[PROCESS_MAX_USER_PAGES] ALIGN(PAGE_SIZE);
-};
-#pragma pack(pop)
-
-class Process {
- public:
-
-  explicit Process(u64 id, u64 start_phy) :id(id), start_phy(start_phy) {
-    auto pts_log2size = log2(sizeof(PageTabletSructures)) + 1;
-    pts_paddr = physical_page_alloc(pts_log2size);
-    pts = (PageTabletSructures*)(pts_paddr + KERNEL_START);
-    memset(pts, 0, sizeof(PageTabletSructures));
-
-    // reuse kernel space map
-    pts->pml4t[256].p = 1;
-    pts->pml4t[256].rw = 1;
-    pts->pml4t[256].base_addr = get_kernel_pdpt_phy_addr() >> 12;
-
-    // create a new user space map
-    pts->pml4t[0].p = 1;
-    pts->pml4t[0].rw = 1;
-    pts->pml4t[0].us = 1;
-    pts->pml4t[0].base_addr = (pts_paddr + ((u64)&pts->pdpt[0] - (u64)pts)) >> 12;
-
-    // only the first pdpt is used
-    pts->pdpt[0].p = 1;
-    pts->pdpt[0].rw = 1;
-    pts->pdpt[0].us = 1; // allow userspace
-    pts->pdpt[0].base_addr = (pts_paddr + ((u64)&pts->pdt[0] - (u64)pts)) >> 12;
-
-    for (u64 i = 0; i < sizeof(pts->pdt) / sizeof(pts->pdt[0]); i++) {
-      pts->pdt[i].p = 1;
-      pts->pdt[i].rw = 1;
-      pts->pdt[i].us = 1;
-      pts->pdt[i].base_addr = (pts_paddr + ((u64)&pts->pt[i * PAGES_PER_TABLE] - (u64)pts)) >> 12;
-    }
-
-    // 1MiB ~ 2MiB are for exec image
-    user_image = (u8*)(1UL*1024UL*1024UL);
-    user_image_phy_addr = physical_page_alloc(log2(USER_IMAGE_SIZE));
-    map_user_addr((u64)user_image, user_image_phy_addr, user_image_size / PAGE_SIZE);
-
-    // 32MiB ~ 33MiB are for user stack
-    user_stack = (u8*)(33UL*1024UL*1024UL);
-    user_stack_phy_addr = physical_page_alloc(log2(USER_STACK_SIZE));
-    map_user_addr((u64)user_stack, user_stack_phy_addr, user_stack_size / PAGE_SIZE);
-
-    context.cr3 = pts_paddr;
-    context.cs = KERNEL_CODE_SELECTOR;
-    context.ds = KERNEL_DATA_SELECTOR;
-    context.ss = KERNEL_DATA_SELECTOR;
-    context.es = KERNEL_DATA_SELECTOR;
-    context.fs = KERNEL_DATA_SELECTOR;
-    context.gs = KERNEL_DATA_SELECTOR;
-    context.rsp = (u64)kernel_stack_bottom;
-    context.rip = (u64)&process_entrypoint;
-    // NOTE: enable interrupt in the process
-    context.rflags = 0x200;
-    // first parameter for process_entry_point(p)
-    context.rdi = (u64)this;
-
-    print();
-  }
-
-  void print() {
-    Kernel::sp() << SerialPort::IntRadix::Hex << "user image " << user_image_phy_addr << " stack 0x" << user_stack_phy_addr << "\n";
-  }
-
-  void map_user_addr(u64 vaddr, u64 paddr, u64 n_pages) {
-    for (u64 i = 0; i < n_pages; i++) {
-      auto vpage = (vaddr >> 12) + i;
-      auto ppage = (paddr >> 12) + i;
-      pts->pt[vpage].p = 1;
-      pts->pt[vpage].rw = 1;
-      pts->pt[vpage].us = 1;
-      pts->pt[vpage].base_addr = ppage;
-    }
-  }
-
-  void *load_elf_from_buffer(char *buffer, u64 size) {
-    Elf64_Ehdr *ehdr = (Elf64_Ehdr*)buffer;
-    const char *ElfMagic = "\x7f" "ELF";
-    for (int i = 0; i < 4; i++) {
-      if (ElfMagic[i] != buffer[i]) {
-        Kernel::k->panic("Corrupted ELF file, invalid header magic");
-      }
-    }
-
-    assert(ehdr->e_phoff, "program header table not found\n");
-    Kernel::sp() << "elf has " << SerialPort::IntRadix::Dec << ehdr->e_phnum << " sections at 0x" << SerialPort::IntRadix::Hex << ehdr->e_phoff << "\n";
-    Kernel::sp() << "  p_offset p_filesz p_vaddr p_memsz\n";
-    for (int i = 0; i < ehdr->e_phnum; i++) {
-      auto phdr = (Elf64_Phdr*)(buffer + ehdr->e_phoff + ehdr->e_phentsize * i);
-      if (phdr->p_type == PT_LOAD && phdr->p_memsz > 0) {
-        Kernel::sp() << SerialPort::IntRadix::Hex << "  0x" << phdr->p_offset << " 0x" << phdr->p_filesz << " 0x" << phdr->p_vaddr << " 0x" << phdr->p_memsz << "\n";
-        assert(phdr->p_vaddr >= 0x100000, "Segment is at wrong location");
-        assert(phdr->p_vaddr+phdr->p_memsz <= 0x200000, "Segment too big");
-        if (phdr->p_filesz <= phdr->p_memsz) {
-          memcpy((void*)phdr->p_vaddr, buffer + phdr->p_offset, phdr->p_filesz);
-        } else {
-          Kernel::k->panic("\nDon't know how to load sections that has filesize > memsize");
-        }
-      }
-    }
-    Kernel::sp() << "entrypoint at " << SerialPort::IntRadix::Hex << ehdr->e_entry << "\n";
-    return (void*)ehdr->e_entry;
-  }
-
-  static void process_entrypoint(Process *p) {
-    p->kernel_entrypoint();
-  }
-
-  u64 phy_addr_in_this(void *ptr) {
-    return start_phy + ((u64)ptr - (u64)this);
-  }
-
-  void kernel_entrypoint() {
-    Kernel::sp() << "starting process pid = "<< current_pid << " '" << (const char*)name << "'\n";
-    if (tmp_start) {
-      Kernel::sp() << "has tmp_start, going for it" << "\n";
-      tmp_start();
-    }
-    halt();
-  }
-
-  // id = 0 for empty process slot
-  u64 id;
-  ProcessState state = ProcessState::Wait;
-  char name[32];
-  // phy addr of the start of this Process object
-  u64 start_phy = 0;
-
-  PageTabletSructures *pts;
-  u64 pts_paddr;
-
-  u8 kernel_stack[THREAD_KERNEL_STACK_SIZE];
-  u8 kernel_stack_bottom[0];
-
-  Context context;
-
-  u64 user_image_phy_addr;
-  u8 *user_image;
-  u64 user_image_size = USER_IMAGE_SIZE;
-
-  u64 user_stack_phy_addr;
-  u8 *user_stack;
-  u64 user_stack_size = USER_STACK_SIZE;
-
-  void (*tmp_start)() = 0;
-};
-
 u64 next_pid = 1;
 Process *processes[MAX_PROCESS];
 
@@ -217,7 +46,7 @@ void thread2_start() {
     :"%rax"
     );
     __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
-//    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
+    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
     i++;
   }
 }
@@ -252,17 +81,21 @@ void exec_main() {
     c.gs = 0;
     c.rsp = (u64)proc->user_stack + proc->user_stack_size;
     c.rip = (u64)start_addr;
+    // enable interrupt
     c.rflags = 0x200;
 
-    cli();
     return_from_syscall(&c);
   }
 }
 
 void main_start() {
+  cli();
+
   Kernel::sp() << "main process started\n";
 
   Kernel::sp() << "main process creating process 2\n";
+
+  // maybe user better mechanism to synchronize
   create_process();
   auto new_proc = processes[next_pid-1];
   new_proc->tmp_start = thread2_start;
@@ -381,4 +214,106 @@ void handle_syscall() {
   }
 
   syscall_table[syscall_num]();
+}
+void Process::map_user_addr(unsigned long vaddr, unsigned long paddr, unsigned long n_pages) {
+  for (u64 i = 0; i < n_pages; i++) {
+    auto vpage = (vaddr >> 12) + i;
+    auto ppage = (paddr >> 12) + i;
+    pts->pt[vpage].p = 1;
+    pts->pt[vpage].rw = 1;
+    pts->pt[vpage].us = 1;
+    pts->pt[vpage].base_addr = ppage;
+  }
+}
+void *Process::load_elf_from_buffer(char *buffer, unsigned long size) {
+  Elf64_Ehdr *ehdr = (Elf64_Ehdr*)buffer;
+  const char *ElfMagic = "\x7f" "ELF";
+  for (int i = 0; i < 4; i++) {
+    if (ElfMagic[i] != buffer[i]) {
+      Kernel::k->panic("Corrupted ELF file, invalid header magic");
+    }
+  }
+
+  assert(ehdr->e_phoff, "program header table not found\n");
+  Kernel::sp() << "elf has " << SerialPort::IntRadix::Dec << ehdr->e_phnum << " sections at 0x" << SerialPort::IntRadix::Hex << ehdr->e_phoff << "\n";
+  Kernel::sp() << "  p_offset p_filesz p_vaddr p_memsz\n";
+  for (int i = 0; i < ehdr->e_phnum; i++) {
+    auto phdr = (Elf64_Phdr*)(buffer + ehdr->e_phoff + ehdr->e_phentsize * i);
+    if (phdr->p_type == PT_LOAD && phdr->p_memsz > 0) {
+      Kernel::sp() << SerialPort::IntRadix::Hex << "  0x" << phdr->p_offset << " 0x" << phdr->p_filesz << " 0x" << phdr->p_vaddr << " 0x" << phdr->p_memsz << "\n";
+      assert(phdr->p_vaddr >= 0x100000, "Segment is at wrong location");
+      assert(phdr->p_vaddr+phdr->p_memsz <= 0x200000, "Segment too big");
+      if (phdr->p_filesz <= phdr->p_memsz) {
+        memcpy((void*)phdr->p_vaddr, buffer + phdr->p_offset, phdr->p_filesz);
+      } else {
+        Kernel::k->panic("\nDon't know how to load sections that has filesize > memsize");
+      }
+    }
+  }
+  Kernel::sp() << "entrypoint at " << SerialPort::IntRadix::Hex << ehdr->e_entry << "\n";
+  return (void*)ehdr->e_entry;
+}
+void Process::kernel_entrypoint() {
+  Kernel::sp() << "starting process pid = "<< current_pid << " '" << (const char*)name << "'\n";
+  if (tmp_start) {
+    Kernel::sp() << "has tmp_start, going for it" << "\n";
+    tmp_start();
+  }
+  halt();
+}
+Process::Process(unsigned long id, unsigned long start_phy) :id(id), start_phy(start_phy) {
+  auto pts_log2size = log2(sizeof(PageTabletSructures)) + 1;
+  pts_paddr = physical_page_alloc(pts_log2size);
+  pts = (PageTabletSructures*)(pts_paddr + KERNEL_START);
+  memset(pts, 0, sizeof(PageTabletSructures));
+
+  // reuse kernel space map
+  pts->pml4t[256].p = 1;
+  pts->pml4t[256].rw = 1;
+  pts->pml4t[256].base_addr = get_kernel_pdpt_phy_addr() >> 12;
+
+  // create a new user space map
+  pts->pml4t[0].p = 1;
+  pts->pml4t[0].rw = 1;
+  pts->pml4t[0].us = 1;
+  pts->pml4t[0].base_addr = (pts_paddr + ((u64)&pts->pdpt[0] - (u64)pts)) >> 12;
+
+  // only the first pdpt is used
+  pts->pdpt[0].p = 1;
+  pts->pdpt[0].rw = 1;
+  pts->pdpt[0].us = 1; // allow userspace
+  pts->pdpt[0].base_addr = (pts_paddr + ((u64)&pts->pdt[0] - (u64)pts)) >> 12;
+
+  for (u64 i = 0; i < sizeof(pts->pdt) / sizeof(pts->pdt[0]); i++) {
+    pts->pdt[i].p = 1;
+    pts->pdt[i].rw = 1;
+    pts->pdt[i].us = 1;
+    pts->pdt[i].base_addr = (pts_paddr + ((u64)&pts->pt[i * PAGES_PER_TABLE] - (u64)pts)) >> 12;
+  }
+
+  // 1MiB ~ 2MiB are for exec image
+  user_image = (u8*)(1UL*1024UL*1024UL);
+  user_image_phy_addr = physical_page_alloc(log2(USER_IMAGE_SIZE));
+  map_user_addr((u64)user_image, user_image_phy_addr, user_image_size / PAGE_SIZE);
+
+  // 32MiB ~ 33MiB are for user stack
+  user_stack = (u8*)(33UL*1024UL*1024UL);
+  user_stack_phy_addr = physical_page_alloc(log2(USER_STACK_SIZE));
+  map_user_addr((u64)user_stack, user_stack_phy_addr, user_stack_size / PAGE_SIZE);
+
+  context.cr3 = pts_paddr;
+  context.cs = KERNEL_CODE_SELECTOR;
+  context.ds = KERNEL_DATA_SELECTOR;
+  context.ss = KERNEL_DATA_SELECTOR;
+  context.es = KERNEL_DATA_SELECTOR;
+  context.fs = KERNEL_DATA_SELECTOR;
+  context.gs = KERNEL_DATA_SELECTOR;
+  context.rsp = (u64)kernel_stack_bottom;
+  context.rip = (u64)&process_entrypoint;
+  // NOTE: enable interrupt in the process
+  context.rflags = 0x200;
+  // first parameter for process_entry_point(p)
+  context.rdi = (u64)this;
+
+  print();
 }

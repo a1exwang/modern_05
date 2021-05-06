@@ -1,8 +1,10 @@
 #include <cpu_utils.h>
 #include <kernel.h>
 #include <irq.h>
-
-
+#include <lib/utils.h>
+#include <mm/page_alloc.h>
+#include <lib/string.h>
+#include <process.h>
 
 constexpr u16 APIC_APICID	= 0x20;
 constexpr u16 APIC_APICVER	= 0x30;
@@ -35,14 +37,26 @@ void test_apic() ;
 class APIC {
  public:
   explicit APIC() {
-    u64 apic_base_reg = get_msr(APIC_BASE_MSR);
-    apic_base = (apic_base_reg & 0xfffffffff000);
+    auto old = get_msr(APIC_BASE_MSR);
+    auto apic_base_phy = old & 0xfffffffff000;
+    apic_base = apic_base_phy + KERNEL_START;
+    assert(apic_base < IDENTITY_MAP_END, "APIC base must be below IDENTITY_MAP_END")
+
+//    auto addr = kernel_page_alloc(16);
+//    auto phy_addr = ((u64)addr - KERNEL_START);
+//    apic_base = (u64)addr;
+//    set_msr(APIC_BASE_MSR, phy_addr | (old & 0xfff));
+//
+//    auto a = get_msr(APIC_BASE_MSR);
+//    Kernel::sp() << "a = " << a  << " " << phy_addr << "\n";
+
     setup_timer();
+//    test_apic();
   }
 
   void setup_timer() {
     auto id = read(APIC_APICID);
-    Kernel::sp() << "Local APIC ID = " << id << "\n";
+    Kernel::sp() << "Local APIC ID = " << id << " base = 0x" << IntRadix::Hex << apic_base << "\n";
 
     // https://wiki.osdev.org/APIC_timer
     // initialize LAPIC to a well known state
@@ -58,8 +72,7 @@ class APIC {
     write(APIC_TASKPRIOR, 0);
 
     // enable
-    u64 apic_base_reg = get_msr(APIC_BASE_MSR);
-    set_msr(APIC_BASE_MSR, apic_base_reg | (1<<11));
+    set_msr(APIC_BASE_MSR, get_msr(APIC_BASE_MSR) | (1<<11));
 
     write(APIC_SPURIOUS, IRQ_SPURIOUS + APIC_SW_ENABLE);
     write(APIC_LVT_TMR, 32);
@@ -72,7 +85,7 @@ class APIC {
     // Perform PIT-supported sleep
 //    pit_perform_sleep();
     volatile int _i = 0;
-    for (int i = 0; i < 1000 * 1000; i++) {
+    for (int i = 0; i < 1000 * 100; i++) {
       _i = _i + 1;
     }
 
@@ -117,4 +130,11 @@ void test_apic() {
     Kernel::sp() << "value " << v << "\n";
 
   }
+}
+extern "C" void timer_irq_handler() {
+//  auto context = current_context();
+//  Kernel::k->serial_port_ << "Timer IRQ " << "\n"
+//      << "  pid = 0x" << SerialPort::IntRadix::Hex << current_pid << "\n"
+//      << "  rip = 0x" << context->rip << " rsp = 0x" << context->rsp << "\n";
+  boot_apic->eoi();
 }

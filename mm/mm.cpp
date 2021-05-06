@@ -83,7 +83,7 @@ static void load_kernel_gdt() {
 struct KernelImagePageTable {
   PageMappingL4Entry pml4t[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
   PageDirectoryPointerEntry pdpt[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
-  PageDirectoryEntry pdt[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
+  PageDirectoryEntry pdt[KERNEL_SPACE_PAGES / PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
   PageTableEntry pt[KERNEL_SPACE_PAGES] ALIGN(PAGE_SIZE);
 };
 
@@ -231,11 +231,13 @@ void setup_page_table_in_kernel_space() {
   t.pml4t[256].rw = 1;
   t.pml4t[256].base_addr = ((u64)(&t.pdpt[0])-KERNEL_START + kernel_start_phy) >> 12;
 
-  t.pdpt[0].p = 1;
-  t.pdpt[0].rw = 1;
-  t.pdpt[0].base_addr = ((u64)(&t.pdt[0])-KERNEL_START + kernel_start_phy) >> 12;
+  for (u64 i = 0; i < sizeof(t.pdpt)/sizeof(t.pdpt[0]); i++) {
+    t.pdpt[i].p = 1;
+    t.pdpt[i].rw = 1;
+    t.pdpt[i].base_addr = ((u64)(&t.pdt[i * PAGES_PER_TABLE])-KERNEL_START + kernel_start_phy) >> 12;
+  }
 
-  for (u64 i = 0; i < PAGES_PER_TABLE; i++) {
+  for (u64 i = 0; i < sizeof(t.pdt)/sizeof(t.pdt[0]); i++) {
     t.pdt[i].p = 1;
     t.pdt[i].rw = 1;
     t.pdt[i].base_addr = ((u64)(&t.pt[i * PAGES_PER_TABLE])-KERNEL_START+kernel_start_phy) >> 12;
@@ -264,7 +266,7 @@ void setup_page_table_in_kernel_space() {
 }
 
 void page_table_init() {
-//  setup_page_table_in_kernel_space();
+  setup_page_table_in_kernel_space();
 }
 
 PageRegion available_memory[1024];

@@ -46,3 +46,84 @@ Context *current_context();
 extern u64 current_pid;
 
 }
+
+constexpr u64 MAX_PROCESS = 1024;
+constexpr u64 THREAD_KERNEL_STACK_SIZE = 16*PAGE_SIZE;
+constexpr u64 PROCESS_MAX_USER_PAGES = 512*512;
+
+constexpr u64 USER_STACK_SIZE = 1024*1024;
+constexpr u64 USER_IMAGE_SIZE = 1024*1024;
+
+enum ProcessState {
+  Wait,
+  Running
+};
+
+u64 get_kernel_pdpt_phy_addr();
+
+#pragma pack(push, 1)
+struct PageTabletSructures {
+  // page table for the process
+  PageMappingL4Entry pml4t[PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
+  PageDirectoryPointerEntry pdpt[PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
+  PageDirectoryEntry pdt[PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
+  PageTableEntry pt[PROCESS_MAX_USER_PAGES] ALIGN(PAGE_SIZE);
+};
+#pragma pack(pop)
+
+class Process;
+extern Process *processes[];
+class Process {
+ public:
+
+  explicit Process(u64 id, u64 start_phy);
+
+  void print() {
+    Kernel::sp() << SerialPort::IntRadix::Hex << "user image " << user_image_phy_addr << " stack 0x" << user_stack_phy_addr << "\n";
+  }
+
+  void map_user_addr(u64 vaddr, u64 paddr, u64 n_pages);
+
+  void *load_elf_from_buffer(char *buffer, u64 size);
+
+  static void process_entrypoint(Process *p) {
+    p->kernel_entrypoint();
+  }
+
+  u64 phy_addr_in_this(void *ptr) {
+    return start_phy + ((u64)ptr - (u64)this);
+  }
+
+  static Process *current() {
+    return processes[current_pid];
+  }
+
+  void kernel_entrypoint();
+
+  // id = 0 for empty process slot
+  u64 id;
+  ProcessState state = ProcessState::Wait;
+  char name[32];
+  // phy addr of the start of this Process object
+  u64 start_phy = 0;
+  int jiffies = 0;
+  int max_jiffies = 10;
+
+  PageTabletSructures *pts;
+  u64 pts_paddr;
+
+  u8 kernel_stack[THREAD_KERNEL_STACK_SIZE];
+  u8 kernel_stack_bottom[0];
+
+  Context context;
+
+  u64 user_image_phy_addr;
+  u8 *user_image;
+  u64 user_image_size = USER_IMAGE_SIZE;
+
+  u64 user_stack_phy_addr;
+  u8 *user_stack;
+  u64 user_stack_size = USER_STACK_SIZE;
+
+  void (*tmp_start)() = 0;
+};

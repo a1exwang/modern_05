@@ -38,6 +38,10 @@ void Kernel::start() {
   SerialPort port;
   port << "Hello from kernel! \n";
 
+  if (efi_info.kernel_physical_start % PAGE_SIZE != 0) {
+    panic("Kernel start address not page aligned");
+  }
+
   debug_init();
   mm_init();
 

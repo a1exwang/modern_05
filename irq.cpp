@@ -32,9 +32,7 @@ extern "C" void _syscall_irq_handler();
 
 InterruptDescriptor main_idt[256];
 
-extern "C" void timer_irq_handler() {
-  Kernel::k->serial_port_ << "Timer IRQ " << "\n";
-}
+extern "C" void timer_irq_handler();
 
 u8 interrupt_stack[INTERRUPT_STACK_SIZE];
 
@@ -112,6 +110,5 @@ void irq_init() {
 
   load_idt(std::make_tuple<void*, u16>(main_idt, 0xfff));
 //  __asm__ __volatile__("int $32");
-
 }
 
