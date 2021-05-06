@@ -313,5 +313,4 @@ void mm_init() {
   dump_efi_info();
 
   page_allocator_init(available_memory, n_available_regions);
-
 }

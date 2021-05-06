@@ -19,7 +19,7 @@ get_target_property(BUNDLED_USER_PROGRAMS_BINARY_DIR bundled_user_programs BINAR
 message("output ${BUNDLED_USER_PROGRAMS_BINARY_DIR}")
 
 add_executable(kernel
-        kernel.cpp irq.S irq.cpp init/init.cpp init/init.S debug.cpp process.cpp syscall.cpp
+        kernel.cpp irq.S irq.cpp init/init.cpp init/init.S debug.cpp process.cpp syscall.cpp device/apic.cpp
         ${BUNDLED_USER_PROGRAMS_BINARY_DIR}/user_init.bin.o
         )
 target_compile_options(kernel PUBLIC ${KERNEL_COMPILE_OPTIONS})

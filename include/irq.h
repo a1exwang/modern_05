@@ -1,9 +1,12 @@
 #pragma once
 #include <cpu_defs.h>
 
-#define IRQ_SYSCALL 42
 #define IRQ_GENERAL_PROTECTION 13
 #define IRQ_PAGE_FAULT 14
+#define IRQ_TIMER 32
+#define IRQ_SPURIOUS 37
+#define IRQ_SYSCALL 42
+
 #define INTERRUPT_STACK_SIZE (16UL * PAGE_SIZE)
 
 void irq_init();

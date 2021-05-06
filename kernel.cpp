@@ -31,12 +31,17 @@ void kernel_start(EFIServicesInfo *efi_info) {
 }
 void process_init();
 
+void apic_init();
 void Kernel::start() {
+  cli();
+
   SerialPort port;
   port << "Hello from kernel! \n";
 
   debug_init();
   mm_init();
+
+  apic_init();
   irq_init();
   process_init();
 

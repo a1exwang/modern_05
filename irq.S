@@ -17,6 +17,7 @@
 .global _pf_irq_handler
 
 .global _timer_irq_handler
+.global _spurious_irq_handler
 .global _syscall_irq_handler
 .global _default_irq_handler
 .global irq_handler
@@ -199,6 +200,14 @@ _pf_irq_handler:
 _timer_irq_handler:
     pushq $0
     pushq $32
+
+    jmp _irq_handler
+
+    iretq
+
+_spurious_irq_handler:
+    pushq $0
+    pushq $37
 
     jmp _irq_handler
 

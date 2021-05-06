@@ -21,6 +21,9 @@ It paints your EFI background with red color.
 ![red](docs/red.png)
 
 ## TODOs
+- boot
+   - ~~EFI~~
+   - initramfs
 - memory
    - ~~buddy page allocator~~
    - kernel dynamic memory allocator based on buddy allocator
@@ -46,7 +49,7 @@ It paints your EFI background with red color.
     - stdio
 
 - kernel library
-    - kernel string library
+    - **kernel string library, sprintf**
 
 - userspace library
     - userspace syscall wrapper

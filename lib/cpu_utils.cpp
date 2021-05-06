@@ -50,12 +50,12 @@ void load_idt(std::tuple<void *, u16> idtr_input) {
   :"m"(idtr)
   :"memory");
 }
-u64 cpuGetMSR(unsigned int msr) {
+u64 get_msr(unsigned int msr) {
   u64 result;
   asm volatile("rdmsr" : "=a"(*(u32*)&result), "=d"(*(u32*)((char*)&result+4)) : "c"(msr));
   return result;
 }
-void cpuSetMSR(unsigned int msr, unsigned long value) {
+void set_msr(unsigned int msr, unsigned long value) {
   asm volatile("wrmsr" : : "a"(value & 0xffffffff), "d"(value >> 32), "c"(msr));
 }
 

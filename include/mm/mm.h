@@ -14,3 +14,4 @@
 #define TSS_SELECTOR (TSS_INDEX*8)
 
 void mm_init();
+void map_user_addr(u64 vaddr, u64 paddr, u64 n_pages);

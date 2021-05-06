@@ -87,6 +87,8 @@ class Process {
     context.gs = KERNEL_DATA_SELECTOR;
     context.rsp = (u64)kernel_stack_bottom;
     context.rip = (u64)&process_entrypoint;
+    // NOTE: enable interrupt in the process
+    context.rflags = 0x200;
     // first parameter for process_entry_point(p)
     context.rdi = (u64)this;
 
@@ -98,7 +100,6 @@ class Process {
   }
 
   void map_user_addr(u64 vaddr, u64 paddr, u64 n_pages) {
-    Kernel::sp() << SerialPort::IntRadix::Hex << "mapping 0x" << vaddr << " -> " << paddr << " " << n_pages << " pages\n";
     for (u64 i = 0; i < n_pages; i++) {
       auto vpage = (vaddr >> 12) + i;
       auto ppage = (paddr >> 12) + i;
@@ -198,7 +199,10 @@ void create_process() {
   processes[pid] = process;
 }
 
+void test_apic();
 void thread2_start() {
+  Kernel::sp() << "thread2 started\n";
+
   u64 i = 0;
   while (true) {
     u64 reg_new;
@@ -248,7 +252,9 @@ void exec_main() {
     c.gs = 0;
     c.rsp = (u64)proc->user_stack + proc->user_stack_size;
     c.rip = (u64)start_addr;
+    c.rflags = 0x200;
 
+    cli();
     return_from_syscall(&c);
   }
 }

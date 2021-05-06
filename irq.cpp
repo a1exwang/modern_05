@@ -27,6 +27,7 @@ extern "C" void _gp_irq_handler();
 extern "C" void _pf_irq_handler();
 
 extern "C" void _timer_irq_handler();
+extern "C" void _spurious_irq_handler();
 extern "C" void _syscall_irq_handler();
 
 InterruptDescriptor main_idt[256];
@@ -40,7 +41,7 @@ u8 interrupt_stack[INTERRUPT_STACK_SIZE];
 void handle_syscall();
 
 extern "C" void irq_handler(u64 irq_num, u64 error_code) {
-  if (irq_num == 32) {
+  if (irq_num == IRQ_TIMER) {
     timer_irq_handler();
   } else if (irq_num == IRQ_SYSCALL) {
     handle_syscall();
@@ -94,6 +95,7 @@ void setup_idt(u16 selector, void *default_handler) {
   set_idt_offset(&main_idt[13], (void*)&_gp_irq_handler);
   set_idt_offset(&main_idt[14], (void*)&_pf_irq_handler);
   set_idt_offset(&main_idt[32], (void*)&_timer_irq_handler);
+  set_idt_offset(&main_idt[37], (void*)&_spurious_irq_handler);
   set_idt_offset(&main_idt[42], (void*)&_syscall_irq_handler, true);
 }
 
@@ -111,7 +113,5 @@ void irq_init() {
   load_idt(std::make_tuple<void*, u16>(main_idt, 0xfff));
 //  __asm__ __volatile__("int $32");
 
-  void* apic_base = (void*)cpuGetMSR(IA32_APIC_BASE_MSR);
-  Kernel::sp() << "APIC base: 0x" << SerialPort::IntRadix::Hex << (u64)apic_base << '\n';
 }
 

@@ -6,18 +6,21 @@
 #include <lib/defs.h>
 #include <lib/port_io.h>
 
+enum class IntRadix {
+  Binary,
+  Oct,
+  Dec,
+  Hex
+};
+
+
 /**
  * COM serial port
  * https://wiki.osdev.org/Serial_Ports
  */
 class SerialPort {
  public:
-  enum class IntRadix {
-    Binary,
-    Oct,
-    Dec,
-    Hex
-  };
+  using IntRadix = ::IntRadix;
   explicit SerialPort(u16 port = 0x3f8) :port(port) {
     outb(port + 1, 0x00);    // Disable all interrupts
     outb(port + 3, 0x80);    // Enable DLAB (set baud rate divisor)
