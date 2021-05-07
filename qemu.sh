@@ -2,6 +2,7 @@
 set -xue
 make disk.raw
 qemu-system-x86_64 \
+  -machine q35 \
   -nographic \
   -no-reboot \
   -m 5G \

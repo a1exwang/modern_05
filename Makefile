@@ -3,14 +3,12 @@ ARCH            = $(shell uname -m | sed s,i[3456789]86,ia32,)
 OBJS            = boot_loader.o boot_page_table.o
 TARGET          = boot_loader.efi
 
-EFIINC          = /usr/include/efi
-EFIINCS         = -I$(EFIINC) -I$(EFIINC)/$(ARCH) -I$(EFIINC)/protocol
 LIB             = /usr/lib
 EFILIB          = /usr/lib
 EFI_CRT_OBJS    = $(EFILIB)/crt0-efi-$(ARCH).o
 EFI_LDS         = $(EFILIB)/elf_$(ARCH)_efi.lds
 
-CFLAGS          = $(EFIINCS) -Iinclude -fno-stack-protector -fpic \
+CFLAGS          = -Iinclude -fno-stack-protector -fpic \
           -fshort-wchar -mno-red-zone -Wall
 ifeq ($(ARCH),x86_64)
   CFLAGS += -DEFI_FUNCTION_WRAPPER
@@ -57,6 +55,14 @@ disk.raw: boot_loader.efi startup.nsh kernel
 	udisksctl unmount -b ${loop_device}p1
 	udisksctl loop-delete -b ${loop_device}
 
+disk-linux.raw:
+	$(eval loop_device := $(shell udisksctl loop-setup -f disk-linux.raw | python3 -c "import sys; print(sys.stdin.read().split()[-1][:-1])"))
+	$(info loop device ${loop_device})
+	$(eval mount_path := $(shell udisksctl mount -b $(loop_device)p1 | python3 -c "import sys; print(sys.stdin.read().split()[-1])"))
+	rm -rf ${mount_path}/EFI ${mount_path}/boot_loader.efi ${mount_path}/startup.nsh
+	cp -r linux-efi/EFI ${mount_path}/EFI
+	udisksctl unmount -b ${loop_device}p1
+	udisksctl loop-delete -b ${loop_device}
 
 sda.vdi: disk.raw startup.nsh kernel
 	rm -f sda.vdi

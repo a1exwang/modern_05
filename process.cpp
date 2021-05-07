@@ -46,7 +46,7 @@ void thread2_start() {
     :"%rax"
     );
     __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
-    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
+//    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
     i++;
   }
 }

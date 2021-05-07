@@ -295,12 +295,12 @@ class PageAllocator {
 
 void page_allocator_init(PageRegion *regions, u64 n_regions) {
   // TODO: improve allocator to support non 2^n regions
-  // find the largest region
+  // find the largest region that is below 4G
   u64 max_pages = 0;
   u64 max_pages_addr = 0;
   for (u64 i = 0; i < n_regions; i++) {
     u64 n_pages = regions[i].n_pages;
-    if (n_pages > max_pages) {
+    if (n_pages > max_pages && regions[i].start < 0x100000000UL) {
       max_pages = n_pages;
       max_pages_addr = regions[i].start;
     }
@@ -311,7 +311,12 @@ void page_allocator_init(PageRegion *regions, u64 n_regions) {
     max_pages_addr = IDENTITY_MAP_PHY_START;
     max_pages -= unusable/PAGE_SIZE;
   }
+  if (max_pages > (1UL*1024UL*1024UL*1024UL)/PAGE_SIZE) {
+    max_pages = (1UL*1024UL*1024UL*1024UL)/PAGE_SIZE;
+  }
   auto log2size = log2(max_pages*PAGE_SIZE);
+
+  Kernel::sp() << IntRadix::Hex << "max_pages_addr: " << max_pages_addr  << ", max_pages " << max_pages << "\n";
 
   assert(max_pages_addr >= IDENTITY_MAP_PHY_START, "region out of identity map region");
   assert(max_pages_addr+(1UL<<log2size) <= IDENTITY_MAP_PHY_END, "region out of identity map region");

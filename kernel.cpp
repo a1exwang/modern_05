@@ -13,6 +13,7 @@
 #include "debug.h"
 #include <init/efi_info.h>
 #include <process.h>
+#include <device/pci.h>
 
 Kernel *Kernel::k;
 
@@ -46,6 +47,7 @@ void Kernel::start() {
   mm_init();
 
   apic_init();
+  pci_init();
   irq_init();
   process_init();
 

@@ -11,5 +11,8 @@ struct EFIServicesInfo {
 
   u64 kernel_physical_start;
   u64 kernel_physical_size;
+
+  u32 rsdt_phy_addr;
+  u64 xsdt_phy_addr;
 };
 #pragma pack(pop)

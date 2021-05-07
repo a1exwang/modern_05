@@ -1,6 +1,6 @@
-#include <efi.h>
-#include <efilib.h>
-#include <efidef.h>
+#include <efi/efi.h>
+#include <efi/efilib.h>
+#include <efi/efidef.h>
 #include <stdarg.h>
 
 #include "efiConsoleControl.h"
@@ -456,6 +456,41 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     Print(L"Failed to load kernel\n");
     return 1;
   }
+
+  // Locating ACPI
+  EFI_GUID ACPI20_GUID = {
+      .Data1 = 0x8868e871,
+      .Data2 = 0xe4f1,
+      .Data3 = 0x11d3,
+      .Data4 = { 0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81 }
+  };
+  void * a = CompareGuid;
+  char *rsdp = 0;
+  for (int i = 0; i < SystemTable->NumberOfTableEntries; i++) {
+    if (CompareGuid(&SystemTable->ConfigurationTable[i].VendorGuid, &ACPI20_GUID) == 0) {
+      rsdp = (char*)SystemTable->ConfigurationTable[i].VendorTable;
+      Print(L"Found ACPI 2.0 RSDP at %lx\n", rsdp);
+      break;
+    }
+  }
+  if (!rsdp) {
+    Print(L"ACPI 2.0 table not found\n");
+    return 1;
+  }
+  const char *magic = "RSD PTR ";
+  for (int i = 0; i < 8; i++) {
+    if (rsdp[i] != magic[i]) {
+      Print(L"Invalid RSDP, invalid signature\n");
+      return 1;
+    }
+  }
+  char oem[7] = {0};
+  memcpy(oem, rsdp+9, 6);
+  u32 rsdt = *(u32*)(rsdp+16);
+  u64 xsdt = *(u64*)(rsdp+24);
+  efi_info.rsdt_phy_addr = rsdt;
+  efi_info.xsdt_phy_addr = xsdt;
+  Print(L"ACPI OEM string '%a', version %d, rsdt = 0x%x, xsdt = 0x%lx\n", oem, (int)rsdp[15], rsdt, xsdt);
 
   {
     u8 memory_descriptors[8192];

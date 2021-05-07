@@ -2,6 +2,7 @@
 
 void memset(void *data, int value, u64 size);
 void memcpy(void *dst, const void *src, u64 size);
+int memcmp(const void *dst, const void *src, u64 size);
 
 void do_assert(int, const char *);
 
