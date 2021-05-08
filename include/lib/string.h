@@ -7,4 +7,4 @@ int memcmp(const void *dst, const void *src, u64 size);
 void do_assert(int, const char *);
 
 #define assert(condition, message) \
-  do_assert((condition), "assert(" #condition ") failed: " message);
+  do_assert((condition), "assert(" #condition ") failed " message);

@@ -28,6 +28,7 @@ It paints your EFI background with red color.
    - ~~buddy page allocator~~
    - kernel dynamic memory allocator based on buddy allocator
    - ~~virtual memory(setup gdt,page table)~~
+   - uncached pool
 
 - irq
     - **close irq on interrupt handler**

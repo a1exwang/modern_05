@@ -250,9 +250,9 @@ void setup_page_table_in_kernel_space() {
     t.pt[i].base_addr = i;
 
     // disable cache for 3G~4G because these may contain MMIO address
-    if (i * PAGE_SIZE >= 3UL * 1024*1024*1024) {
+//    if (i * PAGE_SIZE >= 3UL * 1024*1024*1024) {
       t.pt[i].pcd = 1;
-    }
+//    }
   }
 
   // kernel image
