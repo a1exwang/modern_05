@@ -29,8 +29,12 @@ void create_process() {
 }
 
 void test_apic();
+
+void rtl8139_test();
 void thread2_start() {
   Kernel::sp() << "thread2 started\n";
+
+//  rtl8139_test();
 
   u64 i = 0;
   while (true) {

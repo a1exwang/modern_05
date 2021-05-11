@@ -47,6 +47,7 @@ It paints your EFI background with red color.
 - fs
     - **vfs**
     - ~~simple in-memory file~~
+    - GPT, ext2
     - stdio
 
 - kernel library
@@ -54,6 +55,10 @@ It paints your EFI background with red color.
 
 - userspace library
     - userspace syscall wrapper
+  
+- network
+    - RTL8139 NIC driver
+    - general L2 driver
 
 - IO
     - some harddisk?

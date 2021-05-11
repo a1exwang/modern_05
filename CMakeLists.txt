@@ -12,6 +12,7 @@ set(KERNEL_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/include")
 
 add_subdirectory(lib)
 add_subdirectory(mm)
+add_subdirectory(device)
 add_subdirectory(user)
 
 
@@ -19,12 +20,12 @@ get_target_property(BUNDLED_USER_PROGRAMS_BINARY_DIR bundled_user_programs BINAR
 message("output ${BUNDLED_USER_PROGRAMS_BINARY_DIR}")
 
 add_executable(kernel
-        kernel.cpp irq.S irq.cpp init/init.cpp init/init.S debug.cpp process.cpp syscall.cpp device/apic.cpp device/pci.cpp
+        kernel.cpp irq.S irq.cpp init/init.cpp init/init.S debug.cpp process.cpp syscall.cpp
         ${BUNDLED_USER_PROGRAMS_BINARY_DIR}/user_init.bin.o
         )
 target_compile_options(kernel PUBLIC ${KERNEL_COMPILE_OPTIONS})
 target_link_options(kernel PUBLIC ${KERNEL_LINK_OPTIONS})
-target_link_libraries(kernel lib mm)
+target_link_libraries(kernel lib mm device)
 target_include_directories(kernel PUBLIC ${KERNEL_INCLUDE_DIRS})
 add_dependencies(kernel bundled_user_programs)
 set_target_properties(kernel PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/kernel.ld)

@@ -18,63 +18,28 @@ u16 pci_config_read_word(u16 bus, u16 slot, u16 func, u16 offset){
   return (unsigned short)((inl(0xCFC) >> ((offset & 2) * 8)) & 0xffff);
 }
 
-constexpr u16 PCI_INVALID_VENDOR = 0xffff;
-constexpr u16 PCI_INVALID_DEVICE = 0xffff;
-
-#pragma pack(push, 1)
-struct SystemDescriptionTable {
-  char signature[4];
-  u32 length;
-  u8 revision;
-  u8 checksum;
-  char oem_id[6];
-  u64 oem_table_id;
-  u32 oem_revision;
-  u32 creator_id;
-  u32 creator_revision;
-  u8 data[0];
-};
-struct ExtendedConfigSpace {
-  u16 vendor;
-  u16 device;
-
-  u16 command;
-  u16 status;
-
-  u8 revision_id;
-  u8 prog_if;
-  u8 subclass;
-  u8 class_code;
-
-  u8 cache_line_size;
-  u8 latency_timer;
-  u8 header_type;
-  u8 bist;
-
-  u32 bars[6];
-
-  u32 cardbus_cis_pointer;
-
-  u16 subsystem_vendor;
-  u16 subsystem_id;
-
-  u32 expansion_rom_base_addr;
-
-  u8 capabilities_pointer;
-  u8 reserved[3];
-
-  u8 reserved2[4];
-
-  u8 interrupt_line;
-  u8 interrupt_pin;
-  u8 min_grant;
-  u8 max_latency;
-};
-#pragma pack(pop)
-
 const char *ACPI_TABLE_SIGNATURE_PCIE_CONFIG = "MCFG";
+const char *ACPI_TABLE_SIGNATURE_APIC = "MADT";
 
 u32 *abar = nullptr;
+
+// returns <start, size, is_io_addr>
+std::tuple<u32, u32, bool> bar_parse(volatile u32 *bar) {
+  u32 old = *bar;
+  if (old & 0x1) {
+    // IO space bar
+    *bar = 0xfffffffcu | (old & 0x3);
+    u32 size = ~((*bar & 0xfffffffcu)) + 1;
+    *bar = old;
+    return {old & 0xfffffffcu, size, true};
+  } else {
+    // memory space bar;
+    *bar = 0xfffffff0u | (old & 0xf);
+    u32 size = ~((*bar & 0xfffffff0u)) + 1;
+    *bar = old;
+    return {old & 0xffffffffu, size, false};
+  }
+}
 
 void enumerate_pci_bus() {
   auto xsdt_phy = Kernel::k->efi_info.xsdt_phy_addr;
@@ -88,6 +53,7 @@ void enumerate_pci_bus() {
   Kernel::sp() << IntRadix::Dec << "ACPI extended system description table size = " << xsdt->length << ", entries = " << n_entries << "\n";
   auto tables_phy = (u64*)&xsdt->data;
   SystemDescriptionTable *pcie_sdt = nullptr;
+  SystemDescriptionTable *apic_sdt = nullptr;
   for (int i = 0; i < n_entries; i++) {
     auto phy = tables_phy[i];
     if (phy < IDENTITY_MAP_PHY_END) {
@@ -97,10 +63,15 @@ void enumerate_pci_bus() {
       Kernel::sp() << "  ACPI table " << i << " " << (const char*)sig << "\n";
       if (memcmp(sdt->signature, ACPI_TABLE_SIGNATURE_PCIE_CONFIG, 4) == 0) {
         pcie_sdt = sdt;
-        break;
+      } else if (memcmp(sdt->signature, ACPI_TABLE_SIGNATURE_APIC, 4) == 0) {
+        apic_sdt = sdt;
       }
     }
   }
+
+  void ioapic_init(SystemDescriptionTable*);
+  ioapic_init(apic_sdt);
+
   if (pcie_sdt == nullptr) {
     Kernel::k->panic("Cannot find PCIE Config SDT");
   }
@@ -142,7 +113,7 @@ void enumerate_pci_bus() {
             << " slot 0x" << device << "\n";
 
         for (int function = 0; function < 8; function++) {
-          auto cs = (ExtendedConfigSpace*)(KERNEL_START + (base | (j << 20) | (device << 15 | function << 12)));
+          volatile auto cs = (ExtendedConfigSpace*)(KERNEL_START + (base | (j << 20) | (device << 15 | function << 12)));
           if (cs->vendor == PCI_INVALID_VENDOR) {
             continue;
           }
@@ -157,6 +128,16 @@ void enumerate_pci_bus() {
           // Intel ICH9, other AHCI compatible devices should also work
           if (cs->vendor == 0x8086 && (cs->device == 0x2922 || cs->device == 0x2829)) {
             abar = &cs->bars[5];
+          } else if (cs->vendor == 0x10ec && cs->device == 0x8139) {
+            void rtl8139_init(volatile ExtendedConfigSpace *, volatile void *io_base);
+            for (int bar_id = 0; bar_id < 6; bar_id++) {
+              if (cs->bars[bar_id] != 0) {
+                auto [start, size, is_io] = bar_parse(&cs->bars[bar_id]);
+                Kernel::sp() << "      BAR[" << bar_id << "] = 0x" << IntRadix::Hex << start << ", size = 0x" << size << (is_io ? " IO space" : " Memory space") << "\n";
+              }
+            }
+            // BAR1 contains memory address for registers
+            rtl8139_init(cs, (void*)(KERNEL_START + cs->bars[1]));
           }
         }
       }
@@ -533,45 +514,53 @@ bool isprint(char c) {
   return 0x20 <= c && c < 0x7f;
 }
 
-void hexdump(const char *ptr, u64 size) {
+void hexdump(const char *ptr, u64 size, bool compact) {
   u64 cols = 16;
   u64 lines = size/cols;
   for (u64 line = 0; line < lines; line++) {
-    hex08(line * cols);
-    Kernel::sp() << " | ";
+    if (!compact) {
+      hex08(line * cols);
+      Kernel::sp() << " | ";
+    }
     for (u64 col = 0; col < cols; col++) {
       hex02(ptr[line*cols+col]);
       Kernel::sp() << " ";
     }
-    Kernel::sp() << " | ";
-    for (u64 col = 0; col < cols; col++) {
-      auto c=  (char)ptr[line*cols+col];
-      if (isprint(c)) {
-        Kernel::sp() << c;
-      } else {
-        Kernel::sp() << '.';
+    if (!compact) {
+      Kernel::sp() << " | ";
+      for (u64 col = 0; col < cols; col++) {
+        auto c=  (char)ptr[line*cols+col];
+        if (isprint(c)) {
+          Kernel::sp() << c;
+        } else {
+          Kernel::sp() << '.';
+        }
       }
+      Kernel::sp() << "\n";
     }
-    Kernel::sp() << "\n";
   }
 
   if (lines*cols < size) {
-    hex08(lines * cols);
-    Kernel::sp() << " | ";
-    for (u64 col = 0; col < cols; col++) {
+    if (!compact) {
+      hex08(lines * cols);
+      Kernel::sp() << " | ";
+    }
+    auto cols_remain = size - lines*cols;
+    for (u64 col = 0; col < cols_remain; col++) {
       hex02(ptr[lines*cols+col]);
       Kernel::sp() << " ";
     }
-    Kernel::sp() << " | ";
-    for (u64 col = 0; col < cols; col++) {
-      auto c = (char)ptr[lines*cols+col];
-      if (isprint(c)) {
-        Kernel::sp() << c;
-      } else {
-        Kernel::sp() << '.';
-      }
+    if (!compact) {
+      Kernel::sp() << " | ";
+      for (u64 col = 0; col < cols; col++) {
+        auto c = (char)ptr[lines*cols+col];
+        if (isprint(c)) {
+          Kernel::sp() << c;
+        } else {
+          Kernel::sp() << '.';
+        } }
+      Kernel::sp() << "\n";
     }
-    Kernel::sp() << "\n";
   }
 }
 
@@ -667,7 +656,7 @@ void ahci_init() {
   }
 
 
-  while(1);
+//  while(1);
 }
 
 void pci_init() {

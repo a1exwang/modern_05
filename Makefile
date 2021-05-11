@@ -55,14 +55,14 @@ disk.raw: boot_loader.efi startup.nsh kernel
 	udisksctl unmount -b ${loop_device}p1
 	udisksctl loop-delete -b ${loop_device}
 
-disk-linux.raw:
-	$(eval loop_device := $(shell udisksctl loop-setup -f disk-linux.raw | python3 -c "import sys; print(sys.stdin.read().split()[-1][:-1])"))
-	$(info loop device ${loop_device})
-	$(eval mount_path := $(shell udisksctl mount -b $(loop_device)p1 | python3 -c "import sys; print(sys.stdin.read().split()[-1])"))
-	rm -rf ${mount_path}/EFI ${mount_path}/boot_loader.efi ${mount_path}/startup.nsh
-	cp -r linux-efi/EFI ${mount_path}/EFI
-	udisksctl unmount -b ${loop_device}p1
-	udisksctl loop-delete -b ${loop_device}
+# disk-linux.raw:
+#   $(eval loop_device := $(shell udisksctl loop-setup -f disk-linux.raw | python3 -c "import sys; print(sys.stdin.read().split()[-1][:-1])"))
+#   $(info loop device ${loop_device})
+#   $(eval mount_path := $(shell udisksctl mount -b $(loop_device)p1 | python3 -c "import sys; print(sys.stdin.read().split()[-1])"))
+#   rm -rf ${mount_path}/EFI ${mount_path}/boot_loader.efi ${mount_path}/startup.nsh
+#   cp -r linux-efi/EFI ${mount_path}/EFI
+#   udisksctl unmount -b ${loop_device}p1
+#   udisksctl loop-delete -b ${loop_device}
 
 sda.vdi: disk.raw startup.nsh kernel
 	rm -f sda.vdi

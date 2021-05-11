@@ -39,12 +39,17 @@ u8 interrupt_stack[INTERRUPT_STACK_SIZE];
 void handle_syscall();
 
 extern "C" void irq_handler(u64 irq_num, u64 error_code) {
+  auto context = current_context();
   if (irq_num == IRQ_TIMER) {
     timer_irq_handler();
+//    Kernel::k->serial_port_ << "timer IRQ\n";
   } else if (irq_num == IRQ_SYSCALL) {
+//    Kernel::k->serial_port_
+//        << "syscall: "
+//        << "number = 0x" << SerialPort::IntRadix::Hex << context->rax << " error = 0x" << error_code << " thread = 0x" << current_pid << "\n"
+//        << "rip = 0x" << context->rip << " rsp = 0x" << context->rsp << "\n";
     handle_syscall();
   } else {
-    auto context = current_context();
     Kernel::k->serial_port_
         << "unhandled exception: "
         << "IRQ = 0x" << SerialPort::IntRadix::Hex << irq_num << " error = 0x" << error_code << " thread = 0x" << current_pid << "\n"

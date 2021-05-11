@@ -8,3 +8,5 @@ void do_assert(int, const char *);
 
 #define assert(condition, message) \
   do_assert((condition), "assert(" #condition ") failed " message);
+
+void hexdump(const char *ptr, u64 size, bool compact = false);
