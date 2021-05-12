@@ -1,7 +1,9 @@
 #!/bin/bash
 set -xue
 make disk.raw
-sudo qemu-system-x86_64 \
+# QEMU=../qemu/build/qemu-system-x86_64
+QEMU=qemu-system-x86_64
+sudo $QEMU \
   -machine q35 \
   -nographic \
   -no-reboot \

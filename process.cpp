@@ -34,8 +34,6 @@ void rtl8139_test();
 void thread2_start() {
   Kernel::sp() << "thread2 started\n";
 
-//  rtl8139_test();
-
   u64 i = 0;
   while (true) {
     u64 reg_new;
@@ -52,6 +50,9 @@ void thread2_start() {
     __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
 //    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
     i++;
+    if (i % 3000 == 0) {
+      rtl8139_test();
+    }
   }
 }
 

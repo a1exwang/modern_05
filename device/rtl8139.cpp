@@ -5,7 +5,11 @@
 #include <lib/string.h>
 #include <device/pci.h>
 
-constexpr u32 RxOk = 0x01;
+constexpr u32 RxOk = 1 << 0;
+constexpr u32 RxError = 1 << 1;
+constexpr u32 TxOk = 1 << 2;
+constexpr u32 TxError = 1 << 3;
+constexpr u32 Timeout = 1 << 14;
 constexpr u32 RxOverflow = 0x10;
 constexpr u32 RxFifoOverflow = 0x40;
 constexpr u32 RxAck = RxOk | RxOverflow | RxFifoOverflow;
@@ -23,7 +27,8 @@ struct Rtl8139Register {
   // 0x30
   u32 rx_buffer_start_addr;
 
-  u8 unused2[3];
+  u8 unused2[2];
+  u8 early_rx_status;
   u8 cmd;
   u16 current_address_of_packet_read;
   u16 current_buffer_address;
@@ -31,8 +36,8 @@ struct Rtl8139Register {
   u16 isr;
 
   // 0x40
-  u8 unused4[4];
-  u32 receive_configuration_register;
+  u32 tx_config;
+  u32 rx_config;
   u8 unused42[8];
 
   // 0x50
@@ -41,14 +46,11 @@ struct Rtl8139Register {
 };
 #pragma pack(pop)
 
-const char ping_172_20_0_1[] =
-    "\xea\xa3\x3e\x38\xca\x4d\x52\x54\x00\x12\x34\x56\x08\x00\x45\x00" \
-    "\x00\x54\x7b\x1e\x40\x00\x40\x01\x67\x5e\xac\x14\x00\x03\xac\x14" \
-    "\x00\x01\x08\x00\x39\x11\x00\x01\x00\x01\x83\x91\x9a\x60\x00\x00" \
-    "\x00\x00\xe1\x27\x01\x00\x00\x00\x00\x00\x10\x11\x12\x13\x14\x15" \
-    "\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x20\x21\x22\x23\x24\x25" \
-    "\x26\x27\x28\x29\x2a\x2b\x2c\x2d\x2e\x2f\x30\x31\x32\x33\x34\x35" \
-    "\x36\x37";
+const char test_message[] =
+    "\xff\xff\xff\xff\xff\xff\x0a\x01\x0e\x0a\x01\x0e\x08\x06\x00\x01" \
+    "\x08\x00\x06\x04\x00\x01\x0a\x01\x0e\x0a\x01\x0e\xac\x14\x00\x03" \
+    "\x00\x00\x00\x00\x00\x00\xac\x14\x00\x01";
+
 
 
 class Rtl8139Device {
@@ -61,7 +63,12 @@ class Rtl8139Device {
       tx_buffer_size(1<<16) {
 
     rx_buffer = (volatile char*) kernel_page_alloc(16);
-    tx_buffer = (char*) kernel_page_alloc(16);
+    tx_buffer_raw = (char*) kernel_page_alloc(16);
+    tx_buffer_raw_phy = (u32)(u64)(tx_buffer_raw - KERNEL_START);
+    for (int i = 0; i < 4; i++) {
+      tx_buffer[i] = tx_buffer_raw + 4096*i;
+      tx_buffer_phy[i] = tx_buffer_raw_phy + 4096*i;
+    }
 
     // pci enable bus mastering
     config_space->command = config_space->command | (1<<2);
@@ -118,29 +125,33 @@ class Rtl8139Device {
     u32 rx_buffer_phy = (u32)(u64)(rx_buffer - KERNEL_START);
     regs->rx_buffer_start_addr = rx_buffer_phy;
 
-    // setup IRQ mask: Receive OK + Transmit OK
-    regs->imr = 0xe07f;
-
     // config rx buffer
     // accept all packets, physical match packets, multicast, broadcast
     // enable overflow (we are safe because we have 64k buffer, far greater than 8k+16)
     // 8192+16 buffer size
-    regs->receive_configuration_register = 0xf | (1<<7);
+    regs->rx_config = 0xf | (1 << 7);
+
+    // Interframe gap time = 960ns
+    // DMA burst = 2048
+    // retry count = 8
+    regs->tx_config = (3 << 24) | (7 << 8) | (8 << 4);
+    for (int i = 0; i < 4; i++) {
+      regs->tx_start_addr[i] = tx_buffer_phy[i];
+    }
 
     // enable rx/tx
     regs->cmd = 0xc;
 
-    // try ping
-//    tx_sync(ping_172_20_0_1, sizeof(ping_172_20_0_1));
-//
-//    Kernel::sp() << "tx done\n";
-//
-//    while(1);
+    tx_available = true;
+
+    // enable IRQ mask: all
+    regs->imr = 0xe07f;
   }
 
   void test() {
-    tx_sync(ping_172_20_0_1, sizeof(ping_172_20_0_1));
-    Kernel::sp() << "tx done\n";
+    if (!tx_async(test_message, 42)) {
+      Kernel::sp() << "tx fail\n";
+    }
   }
 
   void handle_rx() {
@@ -151,7 +162,13 @@ class Rtl8139Device {
       return;
     }
     Kernel::sp() << "RTL8139 rx 0x" << rx_offset << " 0x" << packet_size << " capr 0x" << regs->current_address_of_packet_read << " cbr " << regs->current_buffer_address << "\n";
-    hexdump((const char*)(rx_buffer + rx_offset + 4), packet_size, false, 4);
+    const char *data = (const char*)rx_buffer + rx_offset + 4;
+    hexdump(data, packet_size, false, 4);
+    auto calculated_crc32 = crc32iso_hdlc(0, data, packet_size-4);
+    auto stored_crc32 = *(u32*)&data[packet_size-4];
+    if (stored_crc32 != calculated_crc32) {
+      Kernel::sp() << "CRC32 not match! 0x" << IntRadix::Hex << stored_crc32 << " != 0x" << calculated_crc32 << "\n";
+    }
     Kernel::sp() << "\n";
     rx_offset = (rx_offset + packet_size + 4 + 3) & ~3;
     regs->current_address_of_packet_read = rx_offset - 0x10;
@@ -159,23 +176,30 @@ class Rtl8139Device {
   }
 
   void handle_tx() {
+    tx_available = true;
+    tx_buffer_index++;
+    tx_buffer_index %= 4;
     Kernel::sp() << "RTL8139 tx ok\n";
   }
 
   void irq() {
     // clear RX OK
     if (regs->isr != 0) {
-      if (regs->isr & 0x1) {
+      if (regs->isr & RxOk) {
         handle_rx();
+        regs->isr = RxOk;
       }
-      if (regs->isr & 0x2) {
+      if (regs->isr & RxError) {
         Kernel::sp() << "RTL8139 rx error\n";
+        regs->isr = RxError;
       }
-      if (regs->isr & 0x4) {
+      if (regs->isr & TxOk) {
         handle_tx();
+        regs->isr = TxOk;
       }
-      if (regs->isr & 0x8) {
+      if (regs->isr & TxError) {
         Kernel::sp() << "RTL8139 tx error\n";
+        regs->isr = TxError;
       }
       if (regs->isr & RxOverflow) {
         Kernel::sp() << "RTL8139 rx buffer overflow\n";
@@ -189,7 +213,7 @@ class Rtl8139Device {
       if (regs->isr & (1<<13)) {
         Kernel::sp() << "RTL8139 cable length changed\n";
       }
-      if (regs->isr & (1<<14)) {
+      if (regs->isr & Timeout) {
         Kernel::sp() << "RTL8139 timeout\n";
       }
       if (regs->isr & (1<<15)) {
@@ -200,37 +224,76 @@ class Rtl8139Device {
     }
   }
 
-  void tx_sync(const void *buffer, u64 size) {
+  unsigned long crc32iso_hdlc(unsigned long crc, void const *mem, size_t len) {
+    auto data = (unsigned char const *) mem;
+    if (data == NULL)
+      return 0;
+    crc ^= 0xffffffff;
+    while (len--) {
+      crc ^= *data++;
+      for (unsigned k = 0; k < 8; k++)
+        crc = crc & 1 ? (crc >> 1) ^ 0xedb88320 : crc >> 1;
+    }
+    return crc ^ 0xffffffff;
+  }
+
+  u32 swap_endian(u32 v) {
+    return ((v>>0) & 0xff) << 24 |
+        ((v>>8) & 0xff) << 16 |
+        ((v>>16) & 0xff) << 8 |
+        ((v>>24) & 0xff) << 0;
+  }
+
+  u32 be(u32 v) {
+    return swap_endian(v);
+  }
+  u32 le(u32 v) {
+    return v;
+  }
+
+  bool tx_async(const void *buffer, u64 size) {
+    if (!tx_available) {
+      return false;
+    }
+    tx_available = false;
+
+    // wait for host ready
+    while (!(regs->tx_status[tx_buffer_index] & (1<<13)));
+
     // max size 1792
-    u32 tx_buffer_phy = (u64)buffer - KERNEL_START;
+    u64 tx_buffer_phy = (u64)buffer - KERNEL_START;
     assert(tx_buffer_phy < (1ul<<32), "invalid tx buffer set, must be < 4G");
-    regs->tx_start_addr[tx_buffer_index] = tx_buffer_phy;
 
-    memcpy(tx_buffer, ping_172_20_0_1, sizeof(ping_172_20_0_1));
+    // expand to 64-4 bytes if shorter
+    memcpy(tx_buffer[tx_buffer_index], buffer, size);
+    if (size < 64 - 4) {
+      memset(&tx_buffer[tx_buffer_index] + size, 0, 64-4-size);
+      size = 64 - 4;
+    }
+    auto crc32 = crc32iso_hdlc(0, tx_buffer[tx_buffer_index], size);
+    // append crc32
+    *(u32*)&tx_buffer[tx_buffer_index][size] = le(crc32);
+    size += 4;
 
-    // set size
-    regs->tx_status[tx_buffer_index] = regs->tx_status[tx_buffer_index] | (size & 0xfff);
-
-    // start tx
+    // set size and start tx
     regs->tx_status[tx_buffer_index] =
-        regs->tx_status[tx_buffer_index] & (1u<<13);
+        (regs->tx_status[tx_buffer_index] & ~(1<<13)) | (size & 0xfff);
 
-    while (regs->tx_status[tx_buffer_index] & (1<<15));
-    tx_buffer_index++;
-    // set own bit (should be unnecessary)
-    regs->tx_status[tx_buffer_index] =
-        regs->tx_status[tx_buffer_index] | (1u<<13);
+    return true;
   }
 
  private:
   volatile char *rx_buffer;
   u64 rx_buffer_size;
-  char *tx_buffer;
-  u64 tx_buffer_size;
-
   u32 rx_offset = 0;
 
+  char *tx_buffer_raw;
+  u32 tx_buffer_raw_phy;
+  char *tx_buffer[4];
+  u32 tx_buffer_phy[4];
+  u64 tx_buffer_size;
   int tx_buffer_index = 0;
+  bool tx_available = false;
 
   volatile Rtl8139Register *regs;
   volatile ExtendedConfigSpace *config_space;
