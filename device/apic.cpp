@@ -1,6 +1,6 @@
 #include <cpu_utils.h>
 #include <kernel.h>
-#include <irq.h>
+#include <irq.hpp>
 #include <lib/utils.h>
 #include <mm/page_alloc.h>
 #include <lib/string.h>
@@ -122,6 +122,10 @@ APIC *boot_apic = (APIC*)&_boot_apic_space;
 
 void apic_init() {
   new(_boot_apic_space) APIC();
+
+  Kernel::k->irq_->Register(IRQ_TIMER, [](u64, u64, Context*) {
+    boot_apic->eoi();
+  });
 }
 
 void test_apic() {
@@ -130,13 +134,6 @@ void test_apic() {
     Kernel::sp() << "value " << v << "\n";
 
   }
-}
-extern "C" void timer_irq_handler() {
-//  auto context = current_context();
-//  Kernel::k->serial_port_ << "Timer IRQ " << "\n"
-//      << "  pid = 0x" << SerialPort::IntRadix::Hex << current_pid << "\n"
-//      << "  rip = 0x" << context->rip << " rsp = 0x" << context->rsp << "\n";
-  boot_apic->eoi();
 }
 
 void lapic_eoi() {

@@ -4,6 +4,7 @@
 #include <cpu_defs.h>
 #include <lib/string.h>
 #include <device/pci.h>
+#include <irq.hpp>
 
 constexpr u32 RxOk = 1 << 0;
 constexpr u32 RxError = 1 << 1;
@@ -375,19 +376,20 @@ void ioapic_init(SystemDescriptionTable* table) {
   }
 }
 
-void rtl8139_init(volatile ExtendedConfigSpace* ecs, volatile void *io_base) {
+void lapic_eoi();
 
+void rtl8139_init(volatile ExtendedConfigSpace* ecs, volatile void *io_base) {
   void *buf = kernel_page_alloc(16);
   dev = new(buf) Rtl8139Device(ecs, io_base);
   dev->reset();
+
+  Kernel::k->irq_->Register(0x40, 0x18, [](u64 irq_num, u64 error_num, Context *context) {
+    dev->irq();
+    lapic_eoi();
+  });
 }
 
 void rtl8139_test() {
   dev->test();
 }
 
-void lapic_eoi();
-void handle_pci_irqs() {
-  lapic_eoi();
-  dev->irq();
-}

@@ -25,6 +25,10 @@ _BSS_START_ = .;
 _BSS_END_ = .;
   }
 
+  .data.per_cpu (0xffff800000e00000): ALIGN(0x1000) {
+    *(.data.per_cpu)
+  }
+
   /* put these useless sections at the end of 32MiB */
   .note.gnu.build-id (0xffff800001f00000): ALIGN(0x1000) {
     *(.note.gnu.build-id)

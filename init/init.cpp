@@ -1,10 +1,10 @@
-#include <lib/defs.h>
+#include <common/defs.h>
 #include <init/efi_info.h>
 
 extern "C" void kernel_start(EFIServicesInfo*);
 
 u8 kernel_init_stack[4096 * 8];
-extern "C" u8* kernel_init_stack_bottom;
+// leave some safe zone
 u8* kernel_init_stack_bottom = &kernel_init_stack[sizeof(kernel_init_stack)/sizeof(kernel_init_stack[0]) - 128];
 extern "C" void _setup_init_stack();
 

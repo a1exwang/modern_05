@@ -72,3 +72,18 @@ void flush_tlb() {
       "mov %%rax, %%cr3\t\n"
   :::"memory", "%rax");
 }
+u16 get_cs() {
+  u16 cs = 0;
+  asm volatile("mov %%cs ,%0" : "=r" (cs));
+  return cs;
+}
+u64 get_cr2() {
+  u64 cr2;
+  asm volatile("mov %%cr2, %0" :"=r"(cr2));
+  return cr2;
+}
+u64 get_rbp() {
+  u64 ret;
+  asm volatile("mov %%rbp, %0" :"=r"(ret));
+  return ret;
+}

@@ -1,5 +1,5 @@
 #pragma once
-#include <lib/defs.h>
+#include "common/defs.h"
 
 #pragma pack(push, 1)
 // If you update this struct, you should update _irq_handler and _return_from_syscall in irq.S

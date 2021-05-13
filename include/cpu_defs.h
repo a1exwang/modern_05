@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lib/defs.h>
+#include <common/defs.h>
 
 #define PAGE_SIZE 4096UL
 #define ALIGN(N) __attribute__ ((aligned (N)))

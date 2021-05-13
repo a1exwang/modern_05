@@ -328,7 +328,7 @@ void *kernel_page_alloc(u64 i) {
   return (void*)(KERNEL_START + phy_addr);
 }
 
-void kernel_page_release(void *vaddr) {
+void kernel_page_free(void *vaddr) {
   buddy_allocator->free_pages((u64)vaddr - KERNEL_START);
 }
 
@@ -338,4 +338,14 @@ u64 physical_page_alloc(u64 i) {
 
 void physical_page_release(u64 paddr) {
   buddy_allocator->free_pages(paddr);
+}
+void kfree(void *p) {
+  kernel_page_free(p);
+}
+void *kmalloc(size_t size) {
+  auto log2size = log2_ceil(size);
+  if (log2size < Log2MinSize) {
+    log2size = Log2MinSize;
+  }
+  return kernel_page_alloc(log2size);
 }

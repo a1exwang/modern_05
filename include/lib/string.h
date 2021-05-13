@@ -1,4 +1,6 @@
-#include <lib/defs.h>
+#pragma once
+
+#include <common/defs.h>
 
 void memset(void *data, int value, u64 size);
 void memcpy(void *dst, const void *src, u64 size);

@@ -2,12 +2,12 @@
 #include <efi/efi.h>
 #include <efi/efidef.h>
 #include <kernel.h>
-#include <lib/defs.h>
+#include <common/defs.h>
 #include <lib/serial_port.h>
 #include <lib/string.h>
 #include <mm/mm.h>
 #include <mm/page_alloc.h>
-#include <irq.h>
+#include <irq.hpp>
 
 #define CR4_PSE (1u<<4u)
 #define CR4_PAE (1u<<5u)
@@ -186,7 +186,7 @@ void gdt_init() {
   // setup TSS
   memset(&tss, 0, sizeof(tss));
   tss.iomap_base_addr = ((u64)&tss.iomap - (u64)&tss);
-  tss.rsp0 = (u64)&interrupt_stack[INTERRUPT_STACK_SIZE];
+  tss.rsp0 = (u64)interrupt_stack_bottom;
 
   auto *task_desc = (SystemSegmentDescriptor*)&kernel_gdt[TSS_INDEX];
   auto tss_addr = (u64)&tss;

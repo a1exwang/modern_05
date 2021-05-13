@@ -6,10 +6,12 @@ set(CMAKE_C_STANDARD 20)
 set(BUILD_SHARED_LIBS OFF)
 
 set(KERNEL_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/kernel.ld")
-set(KERNEL_COMPILE_OPTIONS -nostdlib -fno-exceptions -fno-builtin)
+set(KERNEL_COMPILE_OPTIONS -nostdlib -fno-exceptions -fno-builtin -fno-rtti)
 set(KERNEL_LINK_OPTIONS -fno-builtin -nostdlib -fno-exceptions -Wl,-T -Wl,${KERNEL_LINKER_SCRIPT} -Wl,--no-relax -static)
 set(KERNEL_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/include")
 
+add_subdirectory(cxx)
+add_subdirectory(common)
 add_subdirectory(lib)
 add_subdirectory(mm)
 add_subdirectory(user)
@@ -24,7 +26,7 @@ add_executable(kernel
 target_compile_options(kernel PUBLIC ${KERNEL_COMPILE_OPTIONS})
 target_link_options(kernel PUBLIC ${KERNEL_LINK_OPTIONS})
 target_link_libraries(kernel
-        lib mm device
+        cxx common lib mm device
         ${BUNDLED_USER_PROGRAMS_BINARY_DIR}/user_init.bin.o
         )
 target_include_directories(kernel PUBLIC ${KERNEL_INCLUDE_DIRS})

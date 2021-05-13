@@ -6,7 +6,7 @@
 #include <mm/page_alloc.h>
 #include <process.h>
 #include <syscall.h>
-#include <irq.h>
+#include <irq.hpp>
 #include <elf.h>
 
 u64 current_pid = 0;
@@ -198,15 +198,11 @@ SyscallFunc syscall_table[] = {
 
 }
 
-// Copied from Linux source code
-//  * Registers on entry:
 // * rax  system call number
-// * rcx  return address
-// * r11  saved rflags (note: r11 is callee-clobbered register in C ABI)
 // * rdi  arg0
 // * rsi  arg1
 // * rdx  arg2
-// * r10  arg3 (needs to be moved to rcx to conform to C ABI)
+// * r10  arg3
 // * r8   arg4
 // * r9   arg5
 void handle_syscall() {
@@ -220,6 +216,7 @@ void handle_syscall() {
 
   syscall_table[syscall_num]();
 }
+
 void Process::map_user_addr(unsigned long vaddr, unsigned long paddr, unsigned long n_pages) {
   for (u64 i = 0; i < n_pages; i++) {
     auto vpage = (vaddr >> 12) + i;

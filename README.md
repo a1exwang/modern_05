@@ -1,6 +1,12 @@
 # unnamed OS
 ## A modern OS prototype using up-to-date technology (AMD64, UEFI, Multi-Core CPU, PCI Express, ACPI/SATA, ZFS, Modern C++)
 
+## Principles
+- Only support up-to-date technology. Don't even consider backward compatibility.
+- Roughly explore different concepts of an OS rather than doing one and do it best.
+- Solve the most valuable problem first and add TODOs or asserts for the rest.
+- Keep the code short and straight-forward at the cost of robustness (for the error cases, just let it kernel panic if the user can prevent them).
+
 ## Prerequisites
 - AMD64 CPU (this OS only supports AMD64 architecture, no x86 support)
 - GCC 10 (any version should be fine as long as you can compile my code)
@@ -64,6 +70,7 @@ $ gdb
   - **load simple ELF**, depends on VFS and a file system
   - scheduler, currently we have a simple round-robin scheduler
   - **spinlock**
+  - **sleep**
 
 - fs
   - **vfs**
@@ -118,6 +125,8 @@ $ gdb
 
 - misc
   - use gdb to debug qemu with gdbserver to debug kernel 😒
+  - fix compiler warnings
+  - compiler attributes: iomem, address_space(x), etc.
 
 - docs
   - add a working example, maybe screencast

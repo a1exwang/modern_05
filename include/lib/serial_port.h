@@ -3,7 +3,7 @@
 #include <tuple>
 
 #include <type_traits>
-#include <lib/defs.h>
+#include <common/defs.h>
 #include <lib/port_io.h>
 
 enum class IntRadix {

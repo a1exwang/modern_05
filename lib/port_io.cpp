@@ -1,4 +1,4 @@
-#include <lib/defs.h>
+#include <common/defs.h>
 
 void outb(u16 address, u8 data) {
   asm (

@@ -1,5 +1,5 @@
 #include <lib/string.h>
-#include <lib/defs.h>
+#include <common/defs.h>
 #include <kernel.h>
 
 void memset(void *data, int value, u64 size) {

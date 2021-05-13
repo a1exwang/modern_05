@@ -1,5 +1,5 @@
 #pragma once
-#include <lib/defs.h>
+#include "../../common/defs.h"
 #include <utility>
 
 template <typename T, T* (T::*NextPtr)>

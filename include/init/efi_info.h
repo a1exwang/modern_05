@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lib/defs.h>
+#include <common/defs.h>
 
 #pragma pack(push, 1)
 struct EFIServicesInfo {

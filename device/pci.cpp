@@ -321,17 +321,17 @@ void start_cmd(HBA_PORT *port)
     ;
 
   // Set FRE (bit4) and ST (bit0)
-  port->cmd |= HBA_PxCMD_FRE;
-  port->cmd |= HBA_PxCMD_ST;
+  port->cmd = port->cmd | HBA_PxCMD_FRE;
+  port->cmd = port->cmd | HBA_PxCMD_ST;
 }
 
 // Stop command engine
 void stop_cmd(HBA_PORT *port) {
   // Clear ST (bit0)
-  port->cmd &= ~HBA_PxCMD_ST;
+  port->cmd = port->cmd & ~HBA_PxCMD_ST;
 
   // Clear FRE (bit4)
-  port->cmd &= ~HBA_PxCMD_FRE;
+  port->cmd = port->cmd & ~HBA_PxCMD_FRE;
 
   // Wait until FR (bit14), CR (bit15) are cleared
   while(1)
