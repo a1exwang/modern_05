@@ -16,6 +16,31 @@
 .global _gp_irq_handler
 .global _pf_irq_handler
 
+.global _40h_irq_handler
+.global _41h_irq_handler
+.global _42h_irq_handler
+.global _43h_irq_handler
+.global _44h_irq_handler
+.global _45h_irq_handler
+.global _46h_irq_handler
+.global _47h_irq_handler
+.global _48h_irq_handler
+.global _49h_irq_handler
+.global _4ah_irq_handler
+.global _4bh_irq_handler
+.global _4ch_irq_handler
+.global _4dh_irq_handler
+.global _4eh_irq_handler
+.global _4fh_irq_handler
+.global _50h_irq_handler
+.global _51h_irq_handler
+.global _52h_irq_handler
+.global _53h_irq_handler
+.global _54h_irq_handler
+.global _55h_irq_handler
+.global _56h_irq_handler
+.global _57h_irq_handler
+
 .global _timer_irq_handler
 .global _spurious_irq_handler
 .global _syscall_irq_handler
@@ -219,6 +244,127 @@ _syscall_irq_handler:
 
     jmp _irq_handler
 
+    iretq
+
+_40h_irq_handler:
+    pushq $0
+    pushq $0x40
+    jmp _irq_handler
+    iretq
+_41h_irq_handler:
+    pushq $0
+    pushq $0x41
+    jmp _irq_handler
+    iretq
+_42h_irq_handler:
+    pushq $0
+    pushq $0x42
+    jmp _irq_handler
+    iretq
+_43h_irq_handler:
+    pushq $0
+    pushq $0x43
+    jmp _irq_handler
+    iretq
+_44h_irq_handler:
+    pushq $0
+    pushq $0x44
+    jmp _irq_handler
+    iretq
+_45h_irq_handler:
+    pushq $0
+    pushq $0x45
+    jmp _irq_handler
+    iretq
+_46h_irq_handler:
+    pushq $0
+    pushq $0x46
+    jmp _irq_handler
+    iretq
+_47h_irq_handler:
+    pushq $0
+    pushq $0x47
+    jmp _irq_handler
+    iretq
+_48h_irq_handler:
+    pushq $0
+    pushq $0x48
+    jmp _irq_handler
+    iretq
+_49h_irq_handler:
+    pushq $0
+    pushq $0x49
+    jmp _irq_handler
+    iretq
+_4ah_irq_handler:
+    pushq $0
+    pushq $0x4a
+    jmp _irq_handler
+    iretq
+_4bh_irq_handler:
+    pushq $0
+    pushq $0x4b
+    jmp _irq_handler
+    iretq
+_4ch_irq_handler:
+    pushq $0
+    pushq $0x4c
+    jmp _irq_handler
+    iretq
+_4dh_irq_handler:
+    pushq $0
+    pushq $0x4d
+    jmp _irq_handler
+    iretq
+_4eh_irq_handler:
+    pushq $0
+    pushq $0x4e
+    jmp _irq_handler
+    iretq
+_4fh_irq_handler:
+    pushq $0
+    pushq $0x4f
+    jmp _irq_handler
+    iretq
+_50h_irq_handler:
+    pushq $0
+    pushq $0x50
+    jmp _irq_handler
+    iretq
+_51h_irq_handler:
+    pushq $0
+    pushq $0x51
+    jmp _irq_handler
+    iretq
+_52h_irq_handler:
+    pushq $0
+    pushq $0x52
+    jmp _irq_handler
+    iretq
+_53h_irq_handler:
+    pushq $0
+    pushq $0x53
+    jmp _irq_handler
+    iretq
+_54h_irq_handler:
+    pushq $0
+    pushq $0x54
+    jmp _irq_handler
+    iretq
+_55h_irq_handler:
+    pushq $0
+    pushq $0x55
+    jmp _irq_handler
+    iretq
+_56h_irq_handler:
+    pushq $0
+    pushq $0x56
+    jmp _irq_handler
+    iretq
+_57h_irq_handler:
+    pushq $0
+    pushq $0x57
+    jmp _irq_handler
     iretq
 
 _default_irq_handler:

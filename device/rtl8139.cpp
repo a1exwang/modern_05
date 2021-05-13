@@ -5,6 +5,11 @@
 #include <lib/string.h>
 #include <device/pci.h>
 
+constexpr u32 RxOk = 0x01;
+constexpr u32 RxOverflow = 0x10;
+constexpr u32 RxFifoOverflow = 0x40;
+constexpr u32 RxAck = RxOk | RxOverflow | RxFifoOverflow;
+
 #pragma pack(push, 1)
 struct Rtl8139Register {
   u8 mac[6];
@@ -20,7 +25,8 @@ struct Rtl8139Register {
 
   u8 unused2[3];
   u8 cmd;
-  u8 unused3[4];
+  u16 current_address_of_packet_read;
+  u16 current_buffer_address;
   u16 imr;
   u16 isr;
 
@@ -58,31 +64,35 @@ class Rtl8139Device {
     tx_buffer = (char*) kernel_page_alloc(16);
 
     // pci enable bus mastering
-    regs->cmd = regs->cmd | (1<<2);
+    config_space->command = config_space->command | (1<<2);
+    // enable IRQ
+    config_space->command = config_space->command & ~(1<<10);
 
-    // pci init
-    // has capabilites list
-    if (config_space->status & (1 << 4)) {
-      u8 *cap_entry = ((u8*)config_space + (config_space->capabilities_pointer & 0xfc));
-      while (true) {
-        auto next_ptr = cap_entry[1] & 0xfc;
-        if (next_ptr == 0) {
-          break;
-        }
-        if (cap_entry[0] == 0x5) {
-          auto message_control = *(u16*)(cap_entry+2);
-          auto message_address = *(u64*)(cap_entry+4);
-          auto message_data = *(u16*)(cap_entry+0xc);
-          auto mask = *(u32*)(cap_entry+0x10);
-          auto pending = *(u32*)(cap_entry+0x14);
-          Kernel::sp() << "support MSI\n";
-        }
+    // use legacy IO APIC to manage IRQ
 
-        cap_entry += next_ptr;
-      }
-
-
-    }
+    // pci init unable to use MSI MSI-X
+//    // has capabilites list
+//    if (config_space->status & (1 << 4)) {
+//      u8 *cap_entry = ((u8*)config_space + (config_space->capabilities_pointer & 0xfc));
+//      while (true) {
+//        auto next_ptr = cap_entry[1] & 0xfc;
+//        if (next_ptr == 0) {
+//          break;
+//        }
+//        if (cap_entry[0] == 0x5) {
+//          auto message_control = *(u16*)(cap_entry+2);
+//          auto message_address = *(u64*)(cap_entry+4);
+//          auto message_data = *(u16*)(cap_entry+0xc);
+//          auto mask = *(u32*)(cap_entry+0x10);
+//          auto pending = *(u32*)(cap_entry+0x14);
+//          Kernel::sp() << "support MSI\n";
+//        }
+//
+//        cap_entry += next_ptr;
+//      }
+//
+//
+//    }
 
   }
 
@@ -109,7 +119,7 @@ class Rtl8139Device {
     regs->rx_buffer_start_addr = rx_buffer_phy;
 
     // setup IRQ mask: Receive OK + Transmit OK
-    regs->imr = 5;
+    regs->imr = 0xe07f;
 
     // config rx buffer
     // accept all packets, physical match packets, multicast, broadcast
@@ -133,6 +143,63 @@ class Rtl8139Device {
     Kernel::sp() << "tx done\n";
   }
 
+  void handle_rx() {
+    auto status = *(u32*)(rx_buffer + rx_offset);
+    auto packet_size = (status >> 16);
+    if (packet_size == 0) {
+      Kernel::sp() << "RTL8139 rx 0\n";
+      return;
+    }
+    Kernel::sp() << "RTL8139 rx 0x" << rx_offset << " 0x" << packet_size << " capr 0x" << regs->current_address_of_packet_read << " cbr " << regs->current_buffer_address << "\n";
+    hexdump((const char*)(rx_buffer + rx_offset + 4), packet_size, false, 4);
+    Kernel::sp() << "\n";
+    rx_offset = (rx_offset + packet_size + 4 + 3) & ~3;
+    regs->current_address_of_packet_read = rx_offset - 0x10;
+    rx_offset %= (8192);
+  }
+
+  void handle_tx() {
+    Kernel::sp() << "RTL8139 tx ok\n";
+  }
+
+  void irq() {
+    // clear RX OK
+    if (regs->isr != 0) {
+      if (regs->isr & 0x1) {
+        handle_rx();
+      }
+      if (regs->isr & 0x2) {
+        Kernel::sp() << "RTL8139 rx error\n";
+      }
+      if (regs->isr & 0x4) {
+        handle_tx();
+      }
+      if (regs->isr & 0x8) {
+        Kernel::sp() << "RTL8139 tx error\n";
+      }
+      if (regs->isr & RxOverflow) {
+        Kernel::sp() << "RTL8139 rx buffer overflow\n";
+      }
+      if (regs->isr & (1<<5)) {
+        Kernel::sp() << "RTL8139 packet underrun/link change\n";
+      }
+      if (regs->isr & RxFifoOverflow) {
+        Kernel::sp() << "RTL8139 rx fifo overflow\n";
+      }
+      if (regs->isr & (1<<13)) {
+        Kernel::sp() << "RTL8139 cable length changed\n";
+      }
+      if (regs->isr & (1<<14)) {
+        Kernel::sp() << "RTL8139 timeout\n";
+      }
+      if (regs->isr & (1<<15)) {
+        Kernel::sp() << "RTL8139 system error\n";
+      }
+      // NOTE: clear isr, must use 1 to clear this
+      regs->isr = RxAck;
+    }
+  }
+
   void tx_sync(const void *buffer, u64 size) {
     // max size 1792
     u32 tx_buffer_phy = (u64)buffer - KERNEL_START;
@@ -148,7 +215,6 @@ class Rtl8139Device {
     regs->tx_status[tx_buffer_index] =
         regs->tx_status[tx_buffer_index] & (1u<<13);
 
-
     while (regs->tx_status[tx_buffer_index] & (1<<15));
     tx_buffer_index++;
     // set own bit (should be unnecessary)
@@ -162,6 +228,8 @@ class Rtl8139Device {
   char *tx_buffer;
   u64 tx_buffer_size;
 
+  u32 rx_offset = 0;
+
   int tx_buffer_index = 0;
 
   volatile Rtl8139Register *regs;
@@ -169,6 +237,20 @@ class Rtl8139Device {
 };
 
 static Rtl8139Device *dev;
+
+void write_ioapic_register(void *apic_base, const u8 offset, const u32 val) {
+  /* tell IOREGSEL where we want to write to */
+  *(volatile u32*)(apic_base) = offset;
+  /* write the value to IOWIN */
+  *(volatile u32*)((char*)apic_base + 0x10) = val;
+}
+
+u32 read_ioapic_register(void *apic_base, const u8 offset) {
+  /* tell IOREGSEL where we want to read from */
+  *(volatile u32*)(apic_base) = offset;
+  /* return the data from IOWIN */
+  return *(volatile u32*)((char*)apic_base + 0x10);
+}
 
 void ioapic_init(SystemDescriptionTable* table) {
   // https://wiki.osdev.org/MADT
@@ -180,6 +262,9 @@ void ioapic_init(SystemDescriptionTable* table) {
     Kernel::sp() << "disabling 8259 PIC\n";
   }
 
+  u32 ioapic0_phy_addr = 0;
+  u32 ioapic0_gsb = 0;
+
   auto rest = table->length - sizeof(SystemDescriptionTable) - 8;
   u8 *p = table->data + 8;
   u64 offset = 0;
@@ -189,17 +274,42 @@ void ioapic_init(SystemDescriptionTable* table) {
 
     // IO APIC
     if (entry_type == 1) {
-      auto id = p[2];
-      auto phy_addr = *(u32*)(p+4);
-      auto global_system_interrupt_base = *(u32*)(p+8);
+      auto id = p[offset+2];
+      auto phy_addr = *(u32*)(p+offset+4);
+      auto global_system_interrupt_base = *(u32*)(p+offset+8);
       Kernel::sp() << "IO APIC 0x" << IntRadix::Hex << id << " 0x" << phy_addr << " 0x" << global_system_interrupt_base << "\n";
+      ioapic0_phy_addr = phy_addr;
+      ioapic0_gsb = global_system_interrupt_base;
+      break;
     }
-
     offset += len;
   }
 
+  assert(ioapic0_phy_addr != 0, "No IO APIC available!");
 
+  auto ioapic0 = (void*)(KERNEL_START + ioapic0_phy_addr);
+  // IOAPICVER
+  u32 v = read_ioapic_register(ioapic0, 0x1);
+  auto max_redir_entry = ((v >> 16) & 0xff) + 1;
+  Kernel::sp() << "IOAPIC0 version 0x" << IntRadix::Hex << (v & 0xff) << " 0x" << max_redir_entry << "\n";
 
+  assert(max_redir_entry >= 1, "NO IRQ avaialble for this IO APIC")
+
+  u32 irq = 0x40;
+  for (int i = 0; i < max_redir_entry; i++) {
+    // deliver mode: fixed
+    // destination mode: physical
+    // pin polarity active low
+    // trigger: edge
+    // mask: false
+    u32 target_lapic_id = 0;
+    write_ioapic_register(ioapic0, 0x10 + 2*i, (irq+i) | (1<<13));
+    write_ioapic_register(ioapic0, 0x11 + 2*i, (target_lapic_id << 24));
+
+    auto lo = read_ioapic_register(ioapic0, 0x10 + 2*i);
+    auto hi = read_ioapic_register(ioapic0, 0x11 + 2*i);
+    Kernel::sp() << "    IOAPIC " << i << ", " << lo << " " << hi << "\n";
+  }
 }
 
 void rtl8139_init(volatile ExtendedConfigSpace* ecs, volatile void *io_base) {
@@ -211,4 +321,10 @@ void rtl8139_init(volatile ExtendedConfigSpace* ecs, volatile void *io_base) {
 
 void rtl8139_test() {
   dev->test();
+}
+
+void lapic_eoi();
+void handle_pci_irqs() {
+  lapic_eoi();
+  dev->irq();
 }

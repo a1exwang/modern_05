@@ -29,6 +29,30 @@ extern "C" void _pf_irq_handler();
 extern "C" void _timer_irq_handler();
 extern "C" void _spurious_irq_handler();
 extern "C" void _syscall_irq_handler();
+extern "C" void _40h_irq_handler();
+extern "C" void _41h_irq_handler();
+extern "C" void _42h_irq_handler();
+extern "C" void _43h_irq_handler();
+extern "C" void _44h_irq_handler();
+extern "C" void _45h_irq_handler();
+extern "C" void _46h_irq_handler();
+extern "C" void _47h_irq_handler();
+extern "C" void _48h_irq_handler();
+extern "C" void _49h_irq_handler();
+extern "C" void _4ah_irq_handler();
+extern "C" void _4bh_irq_handler();
+extern "C" void _4ch_irq_handler();
+extern "C" void _4dh_irq_handler();
+extern "C" void _4eh_irq_handler();
+extern "C" void _4fh_irq_handler();
+extern "C" void _50h_irq_handler();
+extern "C" void _51h_irq_handler();
+extern "C" void _52h_irq_handler();
+extern "C" void _53h_irq_handler();
+extern "C" void _54h_irq_handler();
+extern "C" void _55h_irq_handler();
+extern "C" void _56h_irq_handler();
+extern "C" void _57h_irq_handler();
 
 InterruptDescriptor main_idt[256];
 
@@ -37,6 +61,7 @@ extern "C" void timer_irq_handler();
 u8 interrupt_stack[INTERRUPT_STACK_SIZE];
 
 void handle_syscall();
+void handle_pci_irqs();
 
 extern "C" void irq_handler(u64 irq_num, u64 error_code) {
   auto context = current_context();
@@ -49,6 +74,11 @@ extern "C" void irq_handler(u64 irq_num, u64 error_code) {
 //        << "number = 0x" << SerialPort::IntRadix::Hex << context->rax << " error = 0x" << error_code << " thread = 0x" << current_pid << "\n"
 //        << "rip = 0x" << context->rip << " rsp = 0x" << context->rsp << "\n";
     handle_syscall();
+  } else if (0x40 <= irq_num && irq_num < 0x58) {
+    // PCI IRQs
+//    Kernel::k->serial_port_ << "PCI IRQ = 0x" << SerialPort::IntRadix::Hex << irq_num << "\n";
+    // TODO: handle other IRQs for IO APIC
+    handle_pci_irqs();
   } else {
     Kernel::k->serial_port_
         << "unhandled exception: "
@@ -100,6 +130,32 @@ void setup_idt(u16 selector, void *default_handler) {
   set_idt_offset(&main_idt[32], (void*)&_timer_irq_handler);
   set_idt_offset(&main_idt[37], (void*)&_spurious_irq_handler);
   set_idt_offset(&main_idt[42], (void*)&_syscall_irq_handler, true);
+  set_idt_offset(&main_idt[0x40], (void*)&_syscall_irq_handler, true);
+
+  set_idt_offset(&main_idt[0x40], (void*)&_40h_irq_handler);
+  set_idt_offset(&main_idt[0x41], (void*)&_41h_irq_handler);
+  set_idt_offset(&main_idt[0x42], (void*)&_42h_irq_handler);
+  set_idt_offset(&main_idt[0x43], (void*)&_43h_irq_handler);
+  set_idt_offset(&main_idt[0x44], (void*)&_44h_irq_handler);
+  set_idt_offset(&main_idt[0x45], (void*)&_45h_irq_handler);
+  set_idt_offset(&main_idt[0x46], (void*)&_46h_irq_handler);
+  set_idt_offset(&main_idt[0x47], (void*)&_47h_irq_handler);
+  set_idt_offset(&main_idt[0x48], (void*)&_48h_irq_handler);
+  set_idt_offset(&main_idt[0x49], (void*)&_49h_irq_handler);
+  set_idt_offset(&main_idt[0x4a], (void*)&_4ah_irq_handler);
+  set_idt_offset(&main_idt[0x4b], (void*)&_4bh_irq_handler);
+  set_idt_offset(&main_idt[0x4c], (void*)&_4ch_irq_handler);
+  set_idt_offset(&main_idt[0x4d], (void*)&_4dh_irq_handler);
+  set_idt_offset(&main_idt[0x4e], (void*)&_4eh_irq_handler);
+  set_idt_offset(&main_idt[0x4f], (void*)&_4fh_irq_handler);
+  set_idt_offset(&main_idt[0x50], (void*)&_50h_irq_handler);
+  set_idt_offset(&main_idt[0x50], (void*)&_51h_irq_handler);
+  set_idt_offset(&main_idt[0x51], (void*)&_52h_irq_handler);
+  set_idt_offset(&main_idt[0x52], (void*)&_53h_irq_handler);
+  set_idt_offset(&main_idt[0x53], (void*)&_54h_irq_handler);
+  set_idt_offset(&main_idt[0x54], (void*)&_55h_irq_handler);
+  set_idt_offset(&main_idt[0x56], (void*)&_56h_irq_handler);
+  set_idt_offset(&main_idt[0x57], (void*)&_57h_irq_handler);
 }
 
 void print_idt_descriptor(SerialPort &serial_port, u16 index, const InterruptDescriptor *desc) {

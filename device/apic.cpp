@@ -138,3 +138,7 @@ extern "C" void timer_irq_handler() {
 //      << "  rip = 0x" << context->rip << " rsp = 0x" << context->rsp << "\n";
   boot_apic->eoi();
 }
+
+void lapic_eoi() {
+  boot_apic->eoi();
+}

@@ -19,7 +19,7 @@ u16 pci_config_read_word(u16 bus, u16 slot, u16 func, u16 offset){
 }
 
 const char *ACPI_TABLE_SIGNATURE_PCIE_CONFIG = "MCFG";
-const char *ACPI_TABLE_SIGNATURE_APIC = "MADT";
+const char *ACPI_TABLE_SIGNATURE_APIC = "APIC";
 
 u32 *abar = nullptr;
 
@@ -69,8 +69,12 @@ void enumerate_pci_bus() {
     }
   }
 
+  if (apic_sdt == nullptr) {
+    Kernel::k->panic("Cannot find APIC SDT");
+  }
   void ioapic_init(SystemDescriptionTable*);
   ioapic_init(apic_sdt);
+
 
   if (pcie_sdt == nullptr) {
     Kernel::k->panic("Cannot find PCIE Config SDT");
@@ -96,7 +100,6 @@ void enumerate_pci_bus() {
       Kernel::sp() << "Warning segment group start addr out of range " << IntRadix::Hex << base << "\n";
       continue;
     }
-
 
     for (int j = 0; j < segment_groups[i].bus_end - segment_groups[i].bus_start; j++) {
       auto bus = segment_groups[i].bus_start + j;
@@ -124,6 +127,8 @@ void enumerate_pci_bus() {
               << " header 0x" << cs->header_type
               << " class 0x" << cs->class_code
               << " subclass 0x" << cs->subclass
+              << " IRQ line 0x" << cs->interrupt_line
+              << " IRQ pin 0x" << cs->interrupt_pin
               << "\n";
           // Intel ICH9, other AHCI compatible devices should also work
           if (cs->vendor == 0x8086 && (cs->device == 0x2922 || cs->device == 0x2829)) {
@@ -138,6 +143,9 @@ void enumerate_pci_bus() {
             }
             // BAR1 contains memory address for registers
             rtl8139_init(cs, (void*)(KERNEL_START + cs->bars[1]));
+          } else {
+            // disable IRQ for unknown devices
+            cs->command = (cs->command | (1<<10)) & ~(1<<2);
           }
         }
       }
@@ -514,11 +522,14 @@ bool isprint(char c) {
   return 0x20 <= c && c < 0x7f;
 }
 
-void hexdump(const char *ptr, u64 size, bool compact) {
+void hexdump(const char *ptr, u64 size, bool compact, int indent) {
   u64 cols = 16;
   u64 lines = size/cols;
   for (u64 line = 0; line < lines; line++) {
     if (!compact) {
+      for (int ind = 0; ind < indent; ind++) {
+        Kernel::sp() << ' ';
+      }
       hex08(line * cols);
       Kernel::sp() << " | ";
     }
@@ -542,6 +553,9 @@ void hexdump(const char *ptr, u64 size, bool compact) {
 
   if (lines*cols < size) {
     if (!compact) {
+      for (int ind = 0; ind < indent; ind++) {
+        Kernel::sp() << ' ';
+      }
       hex08(lines * cols);
       Kernel::sp() << " | ";
     }
