@@ -5,6 +5,7 @@
 #include <cpu_utils.h>
 #include <init/efi_info.h>
 #include <common/small_vec.hpp>
+#include <fs/tree.hpp>
 constexpr size_t MaxValidStacks = 8;
 
 class InterruptProcessor;
@@ -23,6 +24,9 @@ class Kernel {
   __attribute__((noreturn))
   void panic(const char *s);
 
+
+  void stack_dump(u64 rbp);
+
  public:
   // public services
   InterruptProcessor *irq_;
@@ -30,6 +34,7 @@ class Kernel {
 
  public:
   SmallVec<std::tuple<u64, u64>, MaxValidStacks> stacks_;
+  DirNode *fs_root_;
 
   SerialPort serial_port_;
   EFIServicesInfo efi_info;

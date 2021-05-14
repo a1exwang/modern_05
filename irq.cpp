@@ -81,19 +81,6 @@ InterruptProcessor::InterruptProcessor(Kernel *kernel) :k(kernel) { // NOLINT(cp
   load_idt(std::make_tuple<void*, u16>(main_idt_, 0xfff));
 }
 
-void stack_dump(u64 rbp) {
-  auto kstack = std::make_tuple(
-      (u64)processes[current_pid]->kernel_stack,
-      (u64)processes[current_pid]->kernel_stack_bottom
-  );
-  Kernel::sp() << "Stack dump:\n";
-  Unwind unwind(rbp, Kernel::k->stacks_, kstack);
-  unwind.Iterate([](u64 rbp, u64 ret_addr) {
-    Kernel::sp() << "  0x" << ret_addr << " rbp 0x" << rbp << "\n";
-    return true;
-  });
-}
-
 void InterruptProcessor::HandleInterrupt(unsigned long irq_num, unsigned long error_code) {
   auto context = current_context();
   if (interrupts_[irq_num].handlers_.empty()) {
@@ -107,7 +94,7 @@ void InterruptProcessor::HandleInterrupt(unsigned long irq_num, unsigned long er
     }
 
     if (context->rbp > KERNEL_START) {
-      stack_dump(context->rbp);
+      Kernel::k->stack_dump(context->rbp);
     } else {
       Kernel::sp() << "exception happens in userspace progress\n";
     }

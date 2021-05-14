@@ -2,19 +2,21 @@
 #include <common/defs.h>
 #include <kernel.h>
 
-void memset(void *data, int value, u64 size) {
+void *memset(void *data, int value, u64 size) noexcept(true) {
   for (u64 i = 0; i < size; i++) {
     ((u8*)data)[i] = value;
   }
+  return data;
 }
 
-void memcpy(void *dst, const void *src, u64 size) {
+void *memcpy(void *dst, const void *src, u64 size) noexcept(true) {
   for (u64 i = 0; i < size; i++) {
     ((u8*)dst)[i] = ((u8*)src)[i];
   }
+  return dst;
 }
 
-int memcmp(const void *a, const void *b, u64 size) {
+int memcmp(const void *a, const void *b, u64 size) noexcept(true) {
   for (int i = 0; i < size; i++) {
     auto lhs = *((u8*)a+i);
     auto rhs = *((u8*)b+i);

@@ -1,4 +1,4 @@
-#include "lib/defs.h"
+#include "include/common/defs.h"
 #include "include/cpu_defs.h"
 
 // map 0-64M -> KERNEL_START -> KERNEL_START+64M

@@ -2,9 +2,12 @@
 
 #include <common/defs.h>
 
-void memset(void *data, int value, u64 size);
-void memcpy(void *dst, const void *src, u64 size);
-int memcmp(const void *dst, const void *src, u64 size);
+
+extern "C" {
+void *memset(void *data, int value, u64 size) noexcept(true);
+void *memcpy(void *dst, const void *src, u64 size) noexcept(true);
+int memcmp(const void *dst, const void *src, u64 size) noexcept(true);
+}
 
 void do_assert(int, const char *);
 

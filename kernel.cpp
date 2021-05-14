@@ -15,6 +15,7 @@
 #include <device/pci.h>
 #include <syscall.h>
 #include <mm/page_alloc.h>
+#include <common/unwind.hpp>
 
 Kernel *Kernel::k;
 
@@ -59,6 +60,7 @@ void Kernel::start() {
   mm_init();
   stacks_init();
   irq_ = irq_init();
+  fs_root_ = knew<DirNode>();
   process_init();
   syscall_ = knew<Syscall>();
 
@@ -78,4 +80,17 @@ void Kernel::panic(const char *s) {
   dump_all();
   halt();
   __builtin_unreachable();
+}
+
+void Kernel::stack_dump(unsigned long rbp) {
+  auto kstack = std::make_tuple(
+      (u64)processes[current_pid]->kernel_stack,
+      (u64)processes[current_pid]->kernel_stack_bottom
+  );
+  Kernel::sp() << "Stack dump:\n";
+  Unwind unwind(rbp, Kernel::k->stacks_, kstack);
+  unwind.Iterate([](u64 rbp, u64 ret_addr) {
+    Kernel::sp() << "  0x" << ret_addr << " rbp 0x" << rbp << "\n";
+    return true;
+  });
 }

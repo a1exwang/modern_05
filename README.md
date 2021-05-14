@@ -58,10 +58,11 @@ $ gdb
   - ~~close irq on interrupt handler~~
   - ~~clock interrupt~~
   - register all exception handlers
-  - pretty exception dumper, depends on C++ Exception/libunwind support
-  - **irq register/unregister, general irq device polling**
+  - ~~pretty exception dumper, depends on C++ Exception/libunwind support~~
+  - ~~irq register/unregister, general irq device polling~~
 
 - process
+  - ~~kthread~~
   - ~~user space process~~
   - ~~basic syscall~~
   - smp
@@ -73,7 +74,11 @@ $ gdb
   - **sleep**
 
 - fs
-  - **vfs**
+  - **+vfs**
+    - mkdir, readdir, unlink
+    - open, read, write
+    - dcache, page cache
+  - **memfs, depends on vfs**
   - ~~simple in-memory file~~
   - GPT partition table, depends on blockdev
   - ext2, depends on GPT and blockdev
