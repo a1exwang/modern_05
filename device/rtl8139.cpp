@@ -357,7 +357,7 @@ void ioapic_init(SystemDescriptionTable* table) {
   auto max_redir_entry = ((v >> 16) & 0xff) + 1;
   Kernel::sp() << "IOAPIC0 version 0x" << IntRadix::Hex << (v & 0xff) << " 0x" << max_redir_entry << "\n";
 
-  assert(max_redir_entry >= 1, "NO IRQ avaialble for this IO APIC")
+  assert(max_redir_entry >= 1, "NO IRQ avaialble for this IO APIC");
 
   u32 irq = 0x40;
   for (int i = 0; i < max_redir_entry; i++) {

@@ -78,7 +78,7 @@ $ gdb
     - mkdir, readdir, unlink
     - open, read, write
     - dcache, page cache
-  - **memfs, depends on vfs**
+  - ~~memfs, depends on vfs~~
   - ~~simple in-memory file~~
   - GPT partition table, depends on blockdev
   - ext2, depends on GPT and blockdev

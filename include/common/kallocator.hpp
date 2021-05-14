@@ -1,5 +1,5 @@
 #pragma once
-#include <mm/page_alloc.h>
+#include <common/kmemory.hpp>
 
 
 template <typename T>

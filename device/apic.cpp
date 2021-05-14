@@ -40,7 +40,7 @@ class APIC {
     auto old = get_msr(APIC_BASE_MSR);
     auto apic_base_phy = old & 0xfffffffff000;
     apic_base = apic_base_phy + KERNEL_START;
-    assert(apic_base < IDENTITY_MAP_END, "APIC base must be below IDENTITY_MAP_END")
+    assert(apic_base < IDENTITY_MAP_END, "APIC base must be below IDENTITY_MAP_END");
 
 //    auto addr = kernel_page_alloc(16);
 //    auto phy_addr = ((u64)addr - KERNEL_START);

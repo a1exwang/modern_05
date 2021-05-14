@@ -21,19 +21,3 @@ void physical_page_release(u64 paddr);
 
 constexpr u64 Log2MinSize = 16; // 64K
 constexpr u64 Log2MaxSize = 32; // 4G
-
-// byte level allocation
-void *kmalloc(size_t size);
-void kfree(void *p);
-
-template<typename T, typename... Args>
-T *knew(Args... args) {
-  auto buf = kmalloc(sizeof(T));
-  return new (buf) T(std::forward<Args>(args)...);
-}
-
-template<typename T>
-void kdelete(T *p) {
-  p->~T();
-  kfree(p);
-}

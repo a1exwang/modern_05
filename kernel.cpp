@@ -16,6 +16,8 @@
 #include <syscall.h>
 #include <mm/page_alloc.h>
 #include <common/unwind.hpp>
+#include <common/kmemory.hpp>
+#include <fs/mem_fs_node.hpp>
 
 Kernel *Kernel::k;
 
@@ -44,6 +46,11 @@ void Kernel::stacks_init() {
   stacks_.push_back(std::make_tuple((u64)interrupt_stack, (u64)interrupt_stack_bottom));
 }
 
+MemFsDirNode *Kernel::create_root_dir() {
+  auto root = knew<MemFsDirNode>(nullptr);
+  return root;
+}
+
 void Kernel::start() {
   cli();
 
@@ -60,7 +67,7 @@ void Kernel::start() {
   mm_init();
   stacks_init();
   irq_ = irq_init();
-  fs_root_ = knew<DirNode>();
+  fs_root_ = create_root_dir();
   process_init();
   syscall_ = knew<Syscall>();
 

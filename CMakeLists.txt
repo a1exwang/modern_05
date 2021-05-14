@@ -10,7 +10,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(KERNEL_COMPILER_OPTIONS -stdlib=libc++)
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # Link libstdc++, we only need the Rb_tree functions. Rely on the linker to remove other useless functions.
-    set(KERNEL_LINK_LIBRARIES -lstdc++)
+#    set(KERNEL_LINK_LIBRARIES -lstdc++)
 else()
     message(FATAL_ERROR "Compiler ${CMAKE_CXX_COMPILER} is not supported")
 endif()
