@@ -19,6 +19,8 @@ struct Block {
 struct Bucket {
   u64 log2size;
 
+  size_t allocated_blocks = 0;
+  size_t available_blocks = 0;
   // can be null to represent empty
   Block *first_block;
 };
@@ -49,10 +51,56 @@ struct BuddyAllocator {
     return block - blocks;
   }
 
+  void print_usage() const {
+    Kernel::sp() << "Buddy allocator at 0x" << SerialPort::IntRadix::Hex << (u64)this << " usage:\n";
+    size_t total_free = 0;
+    size_t total_available_blocks = 0, total_allocated_blocks = 0;
+    size_t total = (1ul << root_log2size);
+    for (u64 i = Log2MinSize; i <= root_log2size; i++) {
+      auto [_, free, alloc, avail] = print_bucket_usage(&get_bucket(i));
+      total_free += free;
+      total_available_blocks += avail;
+      total_allocated_blocks += alloc;
+    }
+    Kernel::sp() << "  total used ";
+    print_file_size(total - total_free);
+    Kernel::sp() << " free ";
+    print_file_size(total_free);
+    Kernel::sp() << " usage " << ((total - total_free) * 100 / total) << "%"
+                 << " allocated blocks " << IntRadix::Dec << total_allocated_blocks
+                 << " avail blocks " << IntRadix::Dec << total_available_blocks << "\n";
+  }
+
+  std::tuple<size_t, size_t, size_t, size_t> print_bucket_usage(const Bucket *bucket) const {
+    auto bucket_size = 1UL << bucket->log2size;
+
+    Kernel::sp() << "  bucket " << SerialPort::IntRadix::Dec << bucket->log2size << " size = ";
+    print_file_size(bucket_size);
+    size_t free = 0;
+    if (bucket->first_block) {
+      Block *block = bucket->first_block;
+      do {
+        if (block->available) {
+          free++;
+        }
+        block = block->next;
+      } while (block != bucket->first_block);
+    }
+
+    Kernel::sp() << " used blocks " << IntRadix::Dec << bucket->allocated_blocks << " ";
+    print_file_size(bucket->allocated_blocks * bucket_size);
+    Kernel::sp() << " free blocks " << IntRadix::Dec << free << " ";
+    print_file_size(free * bucket_size);
+//    Kernel::sp() << " " << "free 0x" << free << " ";
+//    print_file_size(free * bucket_size);
+    Kernel::sp() << "\n";
+    return {0, free*bucket_size, bucket->allocated_blocks, bucket->available_blocks};
+  }
+
   void print() const {
     Kernel::sp() << "Buddy allocator at 0x" << SerialPort::IntRadix::Hex << (u64)this << "\n";
-    for (const auto &bucket : buckets) {
-      print_bucket(&bucket);
+    for (u64 i = Log2MinSize; i <= root_log2size; i++) {
+      print_bucket(&get_bucket(i));
     }
   }
 
@@ -135,6 +183,8 @@ struct BuddyAllocator {
     if (next) {
       next->prev = prev;
     }
+
+    bucket.available_blocks--;
   }
 
   Block *alloc_block_size(u64 log2size) {
@@ -142,7 +192,8 @@ struct BuddyAllocator {
       return nullptr;
     }
 
-    auto first = buckets[log2size - Log2MinSize].first_block;
+    auto &bucket = buckets[log2size - Log2MinSize];
+    auto first = bucket.first_block;
     if (first == nullptr) {
       // split a larger block
       auto parent_block = alloc_block_size(log2size + 1);
@@ -164,6 +215,7 @@ struct BuddyAllocator {
     } else {
       first->available = false;
       remove_from_available_list(first);
+
       return first;
     }
   }
@@ -177,6 +229,8 @@ struct BuddyAllocator {
     if (!block) {
       return 0;
     }
+
+    get_bucket(log2size).allocated_blocks++;
 
     return get_block_phy_addr(block);
   }
@@ -209,7 +263,8 @@ struct BuddyAllocator {
 
   void add_to_available_list(Block *block) {
     auto log2size = block_log2size(block);
-    auto &first = buckets[log2size-Log2MinSize].first_block;
+    auto &bucket = buckets[log2size-Log2MinSize];
+    auto &first = bucket.first_block;
     if (!first) {
       block->next = block;
       block->prev = block;
@@ -222,6 +277,8 @@ struct BuddyAllocator {
       block->next = first;
       block->prev = last;
     }
+
+    bucket.available_blocks++;
   }
 
   void free_pages(u64 addr) {
@@ -234,11 +291,21 @@ struct BuddyAllocator {
     auto merged_block = try_merge_with_buddy(block);
     merged_block->available = true;
     add_to_available_list(merged_block);
+
+    auto &bucket = get_bucket(block_log2size(block));
+    bucket.allocated_blocks--;
   }
 
   u64 block_log2size(Block *block) const {
     u64 depth = log2(get_block_offset(block) + 1);
     return root_log2size - depth;
+  }
+
+  Bucket &get_bucket(u64 log2size) {
+    return buckets[log2size - Log2MinSize];
+  }
+  const Bucket &get_bucket(u64 log2size) const {
+    return buckets[log2size - Log2MinSize];
   }
 
   u64 phy_start;
@@ -311,6 +378,12 @@ void page_allocator_init(PageRegion *regions, u64 n_regions) {
     max_pages_addr = IDENTITY_MAP_PHY_START;
     max_pages -= unusable/PAGE_SIZE;
   }
+  // TODO: use the rest of the memory space
+  // we can only use 1G for buddy allocator because we need identity mapping
+  // but we only map the first 4G
+  // some iomem is at 0x7xxxxxxx and 0xcxxxxxxx so we only have about 1G continuous identity mapped memory
+  // 1. We need a iomem manager
+  // 2. We need
   if (max_pages > (1UL*1024UL*1024UL*1024UL)/PAGE_SIZE) {
     max_pages = (1UL*1024UL*1024UL*1024UL)/PAGE_SIZE;
   }
@@ -348,4 +421,8 @@ void *kmalloc(size_t size) {
     log2size = Log2MinSize;
   }
   return kernel_page_alloc(log2size);
+}
+
+void buddy_allocator_usage() {
+  buddy_allocator->print_usage();
 }

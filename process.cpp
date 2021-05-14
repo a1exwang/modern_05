@@ -31,6 +31,8 @@ void create_process() {
 void test_apic();
 
 void rtl8139_test();
+
+void buddy_allocator_usage();
 void thread2_start() {
   Kernel::sp() << "thread2 started\n";
 
@@ -52,6 +54,10 @@ void thread2_start() {
     i++;
     if (i % 3000 == 0) {
       rtl8139_test();
+    }
+    if (i % 5000 == 0) {
+      // TODO: we need lock
+      buddy_allocator_usage();
     }
   }
 }
