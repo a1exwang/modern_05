@@ -10,6 +10,7 @@
 #include <mm/page_alloc.h>
 #include <functional>
 #include <common/unwind.hpp>
+#include <mm/mm.h>
 
 extern "C" void _default_irq_handler();
 
@@ -93,7 +94,7 @@ void InterruptProcessor::HandleInterrupt(unsigned long irq_num, unsigned long er
           << "page fault cr2 = " << SerialPort::IntRadix::Hex << get_cr2() << "\n";
     }
 
-    if (context->rbp > KERNEL_START) {
+    if (is_kernel(context->rbp)) {
       Kernel::k->stack_dump(context->rbp);
     } else {
       Kernel::sp() << "exception happens in userspace progress\n";

@@ -2,11 +2,14 @@
 #include <common/defs.h>
 
 struct PageRegion {
-  u64 start;
-  u64 n_pages;
+  u32 type; // EFI Type
+  u64 phy_start;
+  u64 virt_start;
+  u64 size;
+  u64 attr;
 };
 
-void page_allocator_init(PageRegion *regions, u64 n_regions);
+void page_allocator_init(SmallVec<PageRegion, 1024> &regions);
 
 // allocate 2^i contiguous physical pages that has mapped to kernel space
 // return 0 on failure

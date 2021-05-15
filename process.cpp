@@ -22,7 +22,7 @@ void create_process() {
     log2size = Log2MinSize;
   }
   auto process_mem = kernel_page_alloc(log2size);
-  auto phy_start = ((u64)process_mem - KERNEL_START);
+  auto phy_start = kernel2phy((u64)process_mem);
   auto process = new(process_mem) Process(pid, phy_start);
   assert(processes[pid] == nullptr, "Process already created");
   processes[pid] = process;
@@ -271,8 +271,8 @@ void Process::kernel_entrypoint() {
 }
 Process::Process(unsigned long id, unsigned long start_phy) :id(id), start_phy(start_phy) {
   auto pts_log2size = log2(sizeof(PageTabletSructures)) + 1;
-  pts_paddr = physical_page_alloc(pts_log2size);
-  pts = (PageTabletSructures*)(pts_paddr + KERNEL_START);
+  pts = (PageTabletSructures*)kernel_page_alloc(pts_log2size);
+  pts_paddr = kernel2phy((u64)pts);
   memset(pts, 0, sizeof(PageTabletSructures));
 
   // reuse kernel space map

@@ -34,4 +34,6 @@ static void sti() {
 u16 get_cs();
 
 u64 get_cr2();
+u64 get_cr3();
 u64 get_rbp();
+u64 get_pml4t_phy();

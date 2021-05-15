@@ -597,6 +597,7 @@ void ahci_port_init(char *port_control_register) {
   Kernel::sp() << IntRadix::Hex << "  cmd_list_addr: " << (u64)command_list_addr << ", fis_bas_addr: " << fis_base_addr << "\n";
   assert(command_list_addr < IDENTITY_MAP_PHY_END, "");
   assert(fis_base_addr < IDENTITY_MAP_PHY_END, "");
+
   auto buf = kernel_page_alloc(16);
   auto buf_phy = ((u64)buf-KERNEL_START);
   auto ok = read((HBA_PORT*)port_control_register, 1, 0, 1, buf_phy);

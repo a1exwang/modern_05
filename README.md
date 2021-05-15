@@ -53,6 +53,7 @@ $ gdb
   - kernel dynamic memory allocator based on buddy allocator (maybe slab)
   - ~~virtual memory(setup gdt,page table)~~
   - uncached pool, depends on page allocator/slab allocator
+  - IOMMU
 
 - irq
   - ~~close irq on interrupt handler~~

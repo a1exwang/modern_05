@@ -82,6 +82,14 @@ u64 get_cr2() {
   asm volatile("mov %%cr2, %0" :"=r"(cr2));
   return cr2;
 }
+u64 get_cr3() {
+  u64 ret;
+  asm volatile("mov %%cr3, %0" :"=r"(ret));
+  return ret;
+}
+u64 get_pml4t_phy() {
+  return get_cr3() & 0xfffffffffffff000;
+}
 u64 get_rbp() {
   u64 ret;
   asm volatile("mov %%rbp, %0" :"=r"(ret));

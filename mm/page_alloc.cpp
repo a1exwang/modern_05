@@ -360,16 +360,16 @@ class PageAllocator {
   PageTableEntry *pt;
 };
 
-void page_allocator_init(PageRegion *regions, u64 n_regions) {
+void page_allocator_init(SmallVec<PageRegion, 1024> &regions) {
   // TODO: improve allocator to support non 2^n regions
   // find the largest region that is below 4G
   u64 max_pages = 0;
   u64 max_pages_addr = 0;
-  for (u64 i = 0; i < n_regions; i++) {
-    u64 n_pages = regions[i].n_pages;
-    if (n_pages > max_pages && regions[i].start < 0x100000000UL) {
+  for (u64 i = 0; i < regions.size(); i++) {
+    u64 n_pages = regions[i].size / PAGE_SIZE;
+    if (n_pages > max_pages && regions[i].phy_start < 0x100000000UL) {
       max_pages = n_pages;
-      max_pages_addr = regions[i].start;
+      max_pages_addr = regions[i].phy_start;
     }
   }
 

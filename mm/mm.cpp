@@ -8,6 +8,7 @@
 #include <mm/mm.h>
 #include <mm/page_alloc.h>
 #include <irq.hpp>
+#include <lib/file_size.h>
 
 #define CR4_PSE (1u<<4u)
 #define CR4_PAE (1u<<5u)
@@ -82,7 +83,9 @@ static void load_kernel_gdt() {
 
 struct KernelImagePageTable {
   PageMappingL4Entry pml4t[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
+
   PageDirectoryPointerEntry pdpt[1 * PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
+
   PageDirectoryEntry pdt[KERNEL_SPACE_PAGES / PAGES_PER_TABLE] ALIGN(PAGE_SIZE);
   PageTableEntry pt[KERNEL_SPACE_PAGES] ALIGN(PAGE_SIZE);
 };
@@ -218,9 +221,8 @@ void gdt_init() {
 
 void setup_page_table_in_kernel_space() {
   // copy page to to kernel space
-  u64 cr3;
-  asm volatile("mov %%cr3,%0" : "=r" (cr3));
-  auto pml4t = reinterpret_cast<const u64*>((cr3 & 0xfffffffffffff000) + KERNEL_START);
+  u64 pml4t_phy = get_pml4t_phy();
+  auto pml4t = reinterpret_cast<const u64*>(pml4t_phy + KERNEL_START);
 
   // setup mapping again;
   memset(&t, 0, sizeof(t));
@@ -251,7 +253,7 @@ void setup_page_table_in_kernel_space() {
 
     // disable cache for 3G~4G because these may contain MMIO address
 //    if (i * PAGE_SIZE >= 3UL * 1024*1024*1024) {
-      t.pt[i].pcd = 1;
+    t.pt[i].pcd = 1;
 //    }
   }
 
@@ -264,7 +266,7 @@ void setup_page_table_in_kernel_space() {
 
   // cr3 needs to by physical addr
   auto vaddr = (u64)&t.pml4t;
-  cr3 = (vaddr - KERNEL_START) + Kernel::k->efi_info.kernel_physical_start;
+  auto cr3 = (vaddr - KERNEL_START) + Kernel::k->efi_info.kernel_physical_start;
 
   Kernel::sp() << "moving page table to kernel, new cr3 = 0x" << SerialPort::IntRadix::Hex << cr3 << "\n";
   asm volatile("mov %0,%%cr3" : :"r" (cr3));
@@ -273,21 +275,21 @@ void setup_page_table_in_kernel_space() {
 void page_table_init() {
   setup_page_table_in_kernel_space();
 }
+constexpr size_t MaxPageRegions = 1024;
 
-PageRegion available_memory[1024];
-u64 n_available_regions;
+static SmallVec<PageRegion, 1024> available_memory;
 
 void dump_efi_info() {
-  n_available_regions = 0;
   auto &efi_info = Kernel::k->efi_info;
 
   u64 total_size = 0;
   Kernel::sp() << "Memory segments: \n";
   for (int i = 0; i < efi_info.descriptor_count; i++) {
     auto md = (EFI_MEMORY_DESCRIPTOR*)(efi_info.memory_descriptors + i * efi_info.descriptor_size);
+    available_memory.emplace_back(PageRegion{md->Type, md->PhysicalStart, 0, md->NumberOfPages * 4096, md->Attribute});
     if (md->Type == EfiConventionalMemory) {
       auto l1 = md->PhysicalStart;
-      auto r1 = md->PhysicalStart + md->NumberOfPages*4096;
+      auto r1 = md->PhysicalStart+4096*md->NumberOfPages;
 
       auto l2 = efi_info.kernel_physical_start;
       auto r2 = efi_info.kernel_physical_start + efi_info.kernel_physical_size;
@@ -298,14 +300,13 @@ void dump_efi_info() {
         Kernel::k->panic("Kernel image should not intersection with conventional memory\n");
       }
 
-      available_memory[n_available_regions].n_pages = md->NumberOfPages;
-      available_memory[n_available_regions].start = md->PhysicalStart;
-      n_available_regions++;
+      available_memory.push_back(PageRegion{md->Type, md->PhysicalStart, 0, md->NumberOfPages, md->Attribute});
       total_size += md->NumberOfPages*4096;
     }
   }
-
-  Kernel::sp() << "Available memory sections = " << n_available_regions << ", size = " << SerialPort::IntRadix::Dec << total_size/1024 << "KiB\n";
+  Kernel::sp() << "Available memory sections = " << available_memory.size() << ", size = ";
+  print_file_size(total_size);
+  Kernel::sp() << "\n";
 }
 
 void mm_init() {
@@ -319,5 +320,12 @@ void mm_init() {
 
   dump_efi_info();
 
-  page_allocator_init(available_memory, n_available_regions);
+  page_allocator_init(available_memory);
+}
+
+u64 kernel2phy(unsigned long kernel_addr) {
+  return kernel_addr - KERNEL_START;
+}
+bool is_kernel(unsigned long vaddr) {
+  return vaddr >= KERNEL_START;
 }
