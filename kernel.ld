@@ -33,4 +33,9 @@ _BSS_END_ = .;
   .note.gnu.build-id (0xffff800001f00000): ALIGN(0x1000) {
     *(.note.gnu.build-id)
   }
+  .init_array (0xffff800001f10000): ALIGN(0x1000) {
+_INIT_ARRAY_START_ = .;
+    *(.init_array)
+_INIT_ARRAY_END_ = .;
+  }
 }

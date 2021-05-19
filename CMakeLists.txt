@@ -30,18 +30,27 @@ add_subdirectory(user)
 add_subdirectory(device)
 
 get_target_property(BUNDLED_USER_PROGRAMS_BINARY_DIR bundled_user_programs BINARY_DIR)
-message("output ${BUNDLED_USER_PROGRAMS_BINARY_DIR}")
 
-add_executable(kernel
-        kernel.cpp irq.S irq.cpp init/init.cpp init/init.S debug.cpp process.cpp syscall.cpp
-        )
-target_compile_options(kernel PUBLIC ${KERNEL_COMPILE_OPTIONS})
-target_link_options(kernel PUBLIC ${KERNEL_LINK_OPTIONS})
+add_library(kernellib
+        kernel.cpp irq.S irq.cpp init/init.cpp init/init.S debug.cpp process.cpp syscall.cpp)
+target_compile_options(kernellib PUBLIC ${KERNEL_COMPILE_OPTIONS})
+target_link_options(kernellib PUBLIC ${KERNEL_LINK_OPTIONS})
+target_include_directories(kernellib PUBLIC ${KERNEL_INCLUDE_DIRS})
+add_dependencies(kernellib bundled_user_programs)
+
+# These object files cannot be used. Just leave them here.
+# The crtbeginT versions are for static executables
+execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=crtbeginT.o OUTPUT_VARIABLE CRTBEGIN_O ERROR_VARIABLE CRTBEGIN_ERR OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=crtend.o OUTPUT_VARIABLE CRTEND_O ERROR_VARIABLE CRTEND_ERR OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=crti.o OUTPUT_VARIABLE CRTI_O ERROR_VARIABLE CRTI_ERR OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=crtn.o OUTPUT_VARIABLE CRTN_O ERROR_VARIABLE CRTN_ERR OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+add_executable(kernel dummy.cpp)
+# NODE: Don't change the order of these crt objs
+# https://wiki.osdev.org/Calling_Global_Constructors
 target_link_libraries(kernel
-        cxx common fs lib mm device
+        kernellib cxx common fs lib mm device
         ${BUNDLED_USER_PROGRAMS_BINARY_DIR}/user_init.bin.o
         ${KERNEL_LINK_LIBRARIES}
         )
-target_include_directories(kernel PUBLIC ${KERNEL_INCLUDE_DIRS})
-add_dependencies(kernel bundled_user_programs)
 set_target_properties(kernel PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/kernel.ld)

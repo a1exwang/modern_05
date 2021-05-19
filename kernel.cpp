@@ -51,6 +51,25 @@ MemFsDirNode *Kernel::create_root_dir() {
   return root;
 }
 
+typedef void (*InitFunc)();
+extern "C" InitFunc _INIT_ARRAY_START_[]; // NOLINT(bugprone-reserved-identifier)
+extern "C" InitFunc _INIT_ARRAY_END_[]; // NOLINT(bugprone-reserved-identifier)
+
+class GlobalConstructorTest {
+ public:
+  GlobalConstructorTest() {
+    Kernel::sp() << "    Testing global C++ initialization\n";
+  }
+};
+
+__attribute__((used))
+GlobalConstructorTest _test_global_init; // NOLINT(bugprone-reserved-identifier)
+
+__attribute__((constructor, used))
+static void test_c_init_func() {
+  Kernel::sp() << "    Testing GCC's constructor attribute initialization\n";
+}
+
 void Kernel::start() {
   cli();
 
@@ -59,6 +78,17 @@ void Kernel::start() {
 
   if (efi_info.kernel_physical_start % PAGE_SIZE != 0) {
     panic("Kernel start address not page aligned");
+  }
+
+  // We do similar things to what GCC does
+  // https://github.com/gcc-mirror/gcc/blob/16e2427f50c208dfe07d07f18009969502c25dc8/libgcc/config/ia64/crtbegin.S
+  // We won't be able to link GCC's crti.o crtbegin.o because of relocation issues
+  // All the global/static variable constructors and __attribute__((constructor)) functions will be called here
+  size_t n = _INIT_ARRAY_END_ - _INIT_ARRAY_START_;
+  port << "Calling global initilizers\n";
+  for (size_t i = 0; i < n; i++) {
+    port << "  before calling ctor " << i << " at 0x" << IntRadix::Hex << (u64)_INIT_ARRAY_START_[i] << "\n";
+    _INIT_ARRAY_START_[i]();
   }
 
   // Init basic functionalities
