@@ -52,7 +52,7 @@ $ gdb
   - ~~buddy page allocator~~
   - kernel dynamic memory allocator based on buddy allocator (maybe slab)
   - ~~virtual memory(setup gdt,page table)~~
-  - uncached pool, depends on page allocator/slab allocator
+  - uncached & low memory pool, depends on page allocator/slab allocator
   - IOMMU
 
 - irq
@@ -71,7 +71,7 @@ $ gdb
   - **exec**
   - **load simple ELF**, depends on VFS and a file system
   - scheduler, currently we have a simple round-robin scheduler
-  - **spinlock**
+  - ~~spinlock~~
   - **sleep**
 
 - fs
@@ -88,7 +88,7 @@ $ gdb
 
 - kernel library
   - **kernel string library, sprintf**
-  - libunwind port/write a libunwind-like library  
+  - libunwind port/ ~~write a libunwind-like library~~
 
 - userspace library
   - userspace syscall wrapper
@@ -124,10 +124,11 @@ $ gdb
 
 - infrastructure
   - C++ exception, depends on libunwind
-  - static initialization \(maybe we need __attribute to put different var in different section, to init them in different stages), may depend on elf?
-  - malloc/free/constructor/destructor, depends on slab allocator
-  - debug symbol, depends on libunwind and elf
-  - stack dumper, depends on libunwind
+  - ~~static initialization \(maybe we need __attribute to put different var in different section, to init them in different stages), may depend on elf?~~
+  - ~~malloc/free/new/free, depends on slab allocator~~
+  - debug symbol, depends on libunwind, elf and dwarf
+  - ~~stack dumper, using my simple unwind algo~~
+    - full fledged unwinder
 
 - misc
   - use gdb to debug qemu with gdbserver to debug kernel 😒
