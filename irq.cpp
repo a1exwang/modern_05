@@ -97,7 +97,7 @@ void InterruptProcessor::HandleInterrupt(unsigned long irq_num, unsigned long er
     if (is_kernel(context->rbp)) {
       Kernel::k->stack_dump(context->rbp);
     } else {
-      Kernel::sp() << "exception happens in userspace progress\n";
+      Kernel::sp() << "exception happens in userspace programs\n";
     }
 
     halt();

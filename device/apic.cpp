@@ -120,7 +120,7 @@ class APIC {
 u8 _boot_apic_space[sizeof(APIC)];
 APIC *boot_apic = (APIC*)&_boot_apic_space;
 
-void apic_init() {
+void lapic_init() {
   new(_boot_apic_space) APIC();
 
   Kernel::k->irq_->Register(IRQ_TIMER, [](u64, u64, Context*) {

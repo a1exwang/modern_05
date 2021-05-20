@@ -18,3 +18,6 @@ void map_user_addr(u64 vaddr, u64 paddr, u64 n_pages);
 
 u64 kernel2phy(u64 kernel_vaddr);
 bool is_kernel(u64 vaddr);
+
+void *phy2virt(u64 phy);
+

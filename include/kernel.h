@@ -6,6 +6,7 @@
 #include <init/efi_info.h>
 #include <common/small_vec.hpp>
 #include <fs/mem_fs_node.hpp>
+#include <device/pci.h>
 
 constexpr size_t MaxValidStacks = 8;
 
@@ -32,6 +33,7 @@ class Kernel {
   // public services
   InterruptProcessor *irq_;
   Syscall *syscall_;
+  PCIBusDriver *pci_bus_driver_;
 
  public:
   SmallVec<std::tuple<u64, u64>, MaxValidStacks> stacks_;

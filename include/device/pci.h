@@ -1,4 +1,10 @@
 #pragma once
+#include <cpu_defs.h>
+#include <common/kstring.hpp>
+#include <common/kmap.hpp>
+#include <common/kmemory.hpp>
+#include <lib/string.h>
+#include <common/kvector.hpp>
 
 void pci_init();
 
@@ -56,3 +62,57 @@ struct ExtendedConfigSpace {
   u8 max_latency;
 };
 #pragma pack(pop)
+
+#pragma pack(push, 1)
+struct ECMGroup {
+  u64 base;
+  u16 segment_group;
+  u8 bus_start;
+  u8 bus_end;
+  u32 reserved;
+};
+#pragma pack(pop)
+
+struct PCIBar {
+  u64 start;
+  size_t size;
+  bool is_io;
+};
+
+struct PCIDeviceInfo {
+  ExtendedConfigSpace *config_space;
+  PCIBar bars[6];
+};
+
+class PCIDeviceDriver {
+ public:
+  virtual kstring name() const = 0;
+  virtual bool Enumerate(PCIDeviceInfo *info) = 0;
+
+  virtual bool HandleInterrupt(u64 irq_num) = 0;
+
+  // Workaround: Without this implementation, the compiler generated destructor will call ::operator delete instead,
+  // which we don't have.
+  void operator delete(PCIDeviceDriver* p, std::destroying_delete_t) {
+     p->~PCIDeviceDriver();
+     kfree(p);
+  }
+  virtual ~PCIDeviceDriver() = default;
+};
+
+class PCIBusDriver {
+ public:
+  void Enumerate(ECMGroup *segment_groups, size_t n);
+
+  template <typename T, typename... Args>
+  void RegisterDriver(u16 vendor, u16 device, Args&& ... args) {
+    static_assert(std::is_base_of_v<PCIDeviceDriver, T>);
+    assert1(drivers_.find({vendor, device}) == drivers_.end());
+    auto obj = knew<T>(std::forward<Args>(args)...);
+    drivers_.emplace(std::make_pair(std::make_tuple(vendor, device), obj));
+  }
+
+ private:
+  kmap<std::tuple<u16, u16>, kup<PCIDeviceDriver>> drivers_;
+  kvector<PCIDeviceDriver*> active_drivers_;
+};

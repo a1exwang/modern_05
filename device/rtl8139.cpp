@@ -1,3 +1,4 @@
+#include <device/rtl8139.hpp>
 #include <cpu_utils.h>
 #include <kernel.h>
 #include <mm/page_alloc.h>
@@ -5,6 +6,7 @@
 #include <lib/string.h>
 #include <device/pci.h>
 #include <irq.hpp>
+#include <mm/mm.h>
 
 constexpr u32 RxOk = 1 << 0;
 constexpr u32 RxError = 1 << 1;
@@ -56,10 +58,10 @@ const char test_message[] =
 
 class Rtl8139Device {
  public:
-  Rtl8139Device(volatile ExtendedConfigSpace *pci_config_space, volatile void *io_base)
+  Rtl8139Device(volatile ExtendedConfigSpace *pci_config_space, volatile void *regs_base)
       :
       config_space(pci_config_space),
-      regs(reinterpret_cast<volatile Rtl8139Register*>(io_base)),
+      regs(reinterpret_cast<volatile Rtl8139Register*>(regs_base)),
       rx_buffer_size(1<<16),
       tx_buffer_size(1<<16) {
 
@@ -183,46 +185,48 @@ class Rtl8139Device {
     Kernel::sp() << "RTL8139 tx ok\n";
   }
 
-  void irq() {
-    // clear RX OK
-    if (regs->isr != 0) {
-      if (regs->isr & RxOk) {
-        handle_rx();
-        regs->isr = RxOk;
-      }
-      if (regs->isr & RxError) {
-        Kernel::sp() << "RTL8139 rx error\n";
-        regs->isr = RxError;
-      }
-      if (regs->isr & TxOk) {
-        handle_tx();
-        regs->isr = TxOk;
-      }
-      if (regs->isr & TxError) {
-        Kernel::sp() << "RTL8139 tx error\n";
-        regs->isr = TxError;
-      }
-      if (regs->isr & RxOverflow) {
-        Kernel::sp() << "RTL8139 rx buffer overflow\n";
-      }
-      if (regs->isr & (1<<5)) {
-        Kernel::sp() << "RTL8139 packet underrun/link change\n";
-      }
-      if (regs->isr & RxFifoOverflow) {
-        Kernel::sp() << "RTL8139 rx fifo overflow\n";
-      }
-      if (regs->isr & (1<<13)) {
-        Kernel::sp() << "RTL8139 cable length changed\n";
-      }
-      if (regs->isr & Timeout) {
-        Kernel::sp() << "RTL8139 timeout\n";
-      }
-      if (regs->isr & (1<<15)) {
-        Kernel::sp() << "RTL8139 system error\n";
-      }
-      // NOTE: clear isr, must use 1 to clear this
-      regs->isr = RxAck;
+  bool irq() {
+    if (regs->isr == 0) {
+      return false;
     }
+    // clear RX OK
+    if (regs->isr & RxOk) {
+      handle_rx();
+      regs->isr = RxOk;
+    }
+    if (regs->isr & RxError) {
+      Kernel::sp() << "RTL8139 rx error\n";
+      regs->isr = RxError;
+    }
+    if (regs->isr & TxOk) {
+      handle_tx();
+      regs->isr = TxOk;
+    }
+    if (regs->isr & TxError) {
+      Kernel::sp() << "RTL8139 tx error\n";
+      regs->isr = TxError;
+    }
+    if (regs->isr & RxOverflow) {
+      Kernel::sp() << "RTL8139 rx buffer overflow\n";
+    }
+    if (regs->isr & (1<<5)) {
+      Kernel::sp() << "RTL8139 packet underrun/link change\n";
+    }
+    if (regs->isr & RxFifoOverflow) {
+      Kernel::sp() << "RTL8139 rx fifo overflow\n";
+    }
+    if (regs->isr & (1<<13)) {
+      Kernel::sp() << "RTL8139 cable length changed\n";
+    }
+    if (regs->isr & Timeout) {
+      Kernel::sp() << "RTL8139 timeout\n";
+    }
+    if (regs->isr & (1<<15)) {
+      Kernel::sp() << "RTL8139 system error\n";
+    }
+    // NOTE: clear isr, must use 1 to clear this
+    regs->isr = RxAck;
+    return true;
   }
 
   unsigned long crc32iso_hdlc(unsigned long crc, void const *mem, size_t len) {
@@ -378,18 +382,32 @@ void ioapic_init(SystemDescriptionTable* table) {
 
 void lapic_eoi();
 
-void rtl8139_init(volatile ExtendedConfigSpace* ecs, volatile void *io_base) {
-  void *buf = kernel_page_alloc(16);
-  dev = new(buf) Rtl8139Device(ecs, io_base);
-  dev->reset();
-
-  Kernel::k->irq_->Register(0x40, 0x18, [](u64 irq_num, u64 error_num, Context *context) {
-    dev->irq();
-    lapic_eoi();
-  });
-}
-
 void rtl8139_test() {
   dev->test();
 }
 
+bool RTL8139Driver::Enumerate(PCIDeviceInfo *info) {
+  bool found = false;
+  PCIBar b;
+  for (auto bar : info->bars) {
+    if (!bar.is_io) {
+      b = bar;
+      found = true;
+      break;
+    }
+  }
+
+  assert1(found);
+  volatile void *regs_base = phy2virt(b.start);
+  dev = knew<Rtl8139Device>(info->config_space, regs_base);
+  dev->reset();
+
+  return true;
+}
+bool RTL8139Driver::HandleInterrupt(unsigned long irq_num) {
+  bool handled = dev->irq();
+  if (handled) {
+    lapic_eoi();
+  }
+  return handled;
+}

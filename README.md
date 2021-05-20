@@ -61,6 +61,7 @@ $ gdb
   - register all exception handlers
   - ~~pretty exception dumper, depends on C++ Exception/libunwind support~~
   - ~~irq register/unregister, general irq device polling~~
+  - refactor IOAPIC
 
 - process
   - ~~kthread~~
@@ -96,7 +97,7 @@ $ gdb
 - bus driver
   - ~~PCI~~
     - MSI/MSI-X (no such device to test)
-  - PCI express
+  - ~~PCI express~~
   - **USB**
 
 - network
@@ -134,6 +135,7 @@ $ gdb
   - use gdb to debug qemu with gdbserver to debug kernel 😒
   - fix compiler warnings
   - compiler attributes: iomem, address_space(x), etc.
+  - unit test
 
 - docs
   - add a working example, maybe screencast

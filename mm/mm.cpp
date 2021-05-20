@@ -329,3 +329,7 @@ u64 kernel2phy(unsigned long kernel_addr) {
 bool is_kernel(unsigned long vaddr) {
   return vaddr >= KERNEL_START;
 }
+void *phy2virt(unsigned long phy) {
+  assert(phy < IDENTITY_MAP_PHY_END, "");
+  return (void*)(phy + KERNEL_START);
+}

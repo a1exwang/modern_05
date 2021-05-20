@@ -18,6 +18,7 @@
 #include <common/unwind.hpp>
 #include <common/kmemory.hpp>
 #include <fs/mem_fs_node.hpp>
+#include <device/pci_devices.hpp>
 
 Kernel *Kernel::k;
 
@@ -35,8 +36,9 @@ void kernel_start(EFIServicesInfo *efi_info) {
 
 }
 void process_init();
+void efi_table_init();
 
-void apic_init();
+void lapic_init();
 
 extern u8* kernel_init_stack;
 extern "C" u8* kernel_init_stack_bottom;
@@ -102,8 +104,12 @@ void Kernel::start() {
   syscall_ = knew<Syscall>();
 
   // Init drivers
-  apic_init();
-  pci_init();
+  lapic_init();
+
+  pci_bus_driver_ = knew<PCIBusDriver>();
+  register_pci_devices(*pci_bus_driver_);
+  // this will also init pci bus
+  efi_table_init();
 
   // exec process 1
   return_from_syscall(current_context());

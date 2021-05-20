@@ -8,8 +8,18 @@ void __throw_bad_function_call() { // NOLINT(bugprone-reserved-identifier)
   Kernel::k->stack_dump(get_rbp());
   Kernel::k->panic("__throw_bad_function_call");
 }
+[[maybe_unused]]
+void __throw_length_error(char const*) {
+  Kernel::k->stack_dump(get_rbp());
+  Kernel::k->panic("__throw_length_error");
+}
+[[maybe_unused]]
+void __throw_logic_error(char const*) {
+  Kernel::k->stack_dump(get_rbp());
+  Kernel::k->panic("__throw_logic_error");
 }
 
+}
 
 extern "C" {
   void __cxa_pure_virtual() {
