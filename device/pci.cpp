@@ -37,6 +37,7 @@ std::tuple<u32, u32, bool> bar_parse(volatile u32 *bar) {
   }
 }
 
+void lapic_eoi();
 void PCIBusDriver::Enumerate(ECMGroup *segment_groups, size_t n) {
   Kernel::sp() << "Enumerating PCI devices:\n";
   for (u64 i = 0; i < n; i++) {
@@ -121,8 +122,30 @@ void PCIBusDriver::Enumerate(ECMGroup *segment_groups, size_t n) {
   Kernel::sp() << "PCI Enumeration done\n";
 
   Kernel::k->irq_->Register(0x40, 0x18, [this](u64 irq_num, u64 error_num, Context *context) {
+
+    // COM1
+    if (irq_num == 0x44) {
+      u8 irq_status = inb(0x3f8 + 2);
+      if ((irq_status & 1) == 0) {
+        Kernel::sp() << "Serial IRQ\n";
+        u8 reason = (irq_status & 0xe)>>1;
+        if (reason == 6) {
+          u8 data = inb(0x3f8 + 0);
+          Kernel::sp() << "Serial IRQ timeout\n";
+        } else if (reason == 2) {
+          u8 data = inb(0x3f8 + 0);
+          Kernel::sp() << "Serial Port input: " << (char)data << "\n";
+        } else {
+          Kernel::sp() << "Serial Port reason: " << (char)reason << "\n";
+        }
+      }
+    }
+    lapic_eoi();
+
+    bool handled = false;
     for (auto d : active_drivers_) {
       if (d->HandleInterrupt(irq_num)) {
+        handled = true;
         break;
       }
     }

@@ -6,6 +6,7 @@
 #include <lib/string.h>
 #include <mm/page_alloc.h>
 #include <mm/mm.h>
+#include <common/hexdump.hpp>
 
 void *port_register(void *ahci_reg_page, u8 port) {
   return ((char*)ahci_reg_page + 0x100) + 0x80 * port;
@@ -351,76 +352,6 @@ bool read(HBA_PORT *port, u32 startl, u32 starth, u32 count, u64 buf_phy_addr)
   return true;
 
 }
-
-void hex02(u8 value) {
-  Kernel::sp() << IntRadix::Hex << (value >> 4) << (value & 0xf);
-}
-void hex08(u64 value) {
-  for (int i = 0; i < 8; i++) {
-    hex02((value >> (64-8 - i * 8)) & 0xff);
-  }
-}
-
-bool isprint(char c) {
-  return 0x20 <= c && c < 0x7f;
-}
-
-void hexdump(const char *ptr, u64 size, bool compact, int indent) {
-  u64 cols = 16;
-  u64 lines = size/cols;
-  for (u64 line = 0; line < lines; line++) {
-    if (!compact) {
-      for (int ind = 0; ind < indent; ind++) {
-        Kernel::sp() << ' ';
-      }
-      hex08(line * cols);
-      Kernel::sp() << " | ";
-    }
-    for (u64 col = 0; col < cols; col++) {
-      hex02(ptr[line*cols+col]);
-      Kernel::sp() << " ";
-    }
-    if (!compact) {
-      Kernel::sp() << " | ";
-      for (u64 col = 0; col < cols; col++) {
-        auto c=  (char)ptr[line*cols+col];
-        if (isprint(c)) {
-          Kernel::sp() << c;
-        } else {
-          Kernel::sp() << '.';
-        }
-      }
-      Kernel::sp() << "\n";
-    }
-  }
-
-  if (lines*cols < size) {
-    if (!compact) {
-      for (int ind = 0; ind < indent; ind++) {
-        Kernel::sp() << ' ';
-      }
-      hex08(lines * cols);
-      Kernel::sp() << " | ";
-    }
-    auto cols_remain = size - lines*cols;
-    for (u64 col = 0; col < cols_remain; col++) {
-      hex02(ptr[lines*cols+col]);
-      Kernel::sp() << " ";
-    }
-    if (!compact) {
-      Kernel::sp() << " | ";
-      for (u64 col = 0; col < cols; col++) {
-        auto c = (char)ptr[lines*cols+col];
-        if (isprint(c)) {
-          Kernel::sp() << c;
-        } else {
-          Kernel::sp() << '.';
-        } }
-      Kernel::sp() << "\n";
-    }
-  }
-}
-
 
 void ahci_port_init(char *port_control_register) {
   auto *cmd = (u32*)(port_control_register + 0x18);

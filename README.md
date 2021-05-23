@@ -102,6 +102,7 @@ $ gdb
 
 - network
   - ~~RTL8139 NIC driver~~
+    - support 8139C+
   - **general L2 driver**
   - **ARP**
   - IP, IPv6

@@ -23,11 +23,12 @@ set(KERNEL_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/include")
 
 add_subdirectory(cxx)
 add_subdirectory(common)
+add_subdirectory(device)
 add_subdirectory(fs)
 add_subdirectory(lib)
 add_subdirectory(mm)
+add_subdirectory(net)
 add_subdirectory(user)
-add_subdirectory(device)
 
 get_target_property(BUNDLED_USER_PROGRAMS_BINARY_DIR bundled_user_programs BINARY_DIR)
 
@@ -49,7 +50,7 @@ add_executable(kernel dummy.cpp)
 # NODE: Don't change the order of these crt objs
 # https://wiki.osdev.org/Calling_Global_Constructors
 target_link_libraries(kernel
-        kernellib cxx common fs lib mm device
+        kernellib cxx device common fs lib mm net
         ${BUNDLED_USER_PROGRAMS_BINARY_DIR}/user_init.bin.o
         ${KERNEL_LINK_LIBRARIES}
         )

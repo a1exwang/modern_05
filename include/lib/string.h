@@ -2,6 +2,7 @@
 
 #include <common/defs.h>
 #include <cstddef>
+#include <span>
 
 extern "C" {
 void *memset(void *data, int value, u64 size) noexcept(true);
@@ -19,5 +20,3 @@ void do_assert(int, const char *, const char *message, const char *file, const c
 
 #define assert(condition, message) \
   do_assert((condition), #condition, (message), __FILE__, __FUNCTION__, __LINE__)
-
-void hexdump(const char *ptr, u64 size, bool compact = false, int indent = 0);

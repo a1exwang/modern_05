@@ -1,3 +1,5 @@
+#include <span>
+
 #include <device/rtl8139.hpp>
 #include <cpu_utils.h>
 #include <kernel.h>
@@ -7,6 +9,8 @@
 #include <device/pci.h>
 #include <irq.hpp>
 #include <mm/mm.h>
+#include <net/ethernet.hpp>
+#include <common/hexdump.hpp>
 
 constexpr u32 RxOk = 1 << 0;
 constexpr u32 RxError = 1 << 1;
@@ -16,6 +20,47 @@ constexpr u32 Timeout = 1 << 14;
 constexpr u32 RxOverflow = 0x10;
 constexpr u32 RxFifoOverflow = 0x40;
 constexpr u32 RxAck = RxOk | RxOverflow | RxFifoOverflow;
+
+template <typename T>
+T swap_endian(T v);
+template <typename T>
+T be(T v);
+template <typename T>
+T le(T v);
+
+template <>
+u32 swap_endian<u32>(u32 v) {
+  return ((v>>0) & 0xff) << 24 |
+      ((v>>8) & 0xff) << 16 |
+      ((v>>16) & 0xff) << 8 |
+      ((v>>24) & 0xff) << 0;
+}
+
+template <>
+u32 be<u32>(u32 v) {
+  return swap_endian(v);
+}
+
+template <>
+u32 le<u32>(u32 v) {
+  return v;
+}
+
+template <>
+u16 swap_endian<u16>(u16 v) {
+  return ((v>>0) & 0xff) << 8 |
+      ((v>>8) & 0xff) << 0;
+}
+
+template <>
+u16 be<u16>(u16 v) {
+  return swap_endian(v);
+}
+
+template <>
+u16 le<u16>(u16 v) {
+  return v;
+}
 
 #pragma pack(push, 1)
 struct Rtl8139Register {
@@ -55,6 +100,25 @@ const char test_message[] =
     "\x00\x00\x00\x00\x00\x00\xac\x14\x00\x01";
 
 
+struct EthernetAddress {
+  u8 data[6];
+
+  bool operator==(const EthernetAddress &rhs) const {
+    return memcmp(data, rhs.data, sizeof(data)) == 0;
+  }
+  bool operator!=(const EthernetAddress &rhs) const {
+    return !(*this == rhs);
+  }
+
+  void print() const {
+    for (int i = 0; i < sizeof(data); i++) {
+      if (i != 0) {
+        Kernel::sp() << ":";
+      }
+      hex01(data[i]);
+    }
+  }
+};
 
 class Rtl8139Device {
  public:
@@ -121,6 +185,7 @@ class Rtl8139Device {
 
     // print MAC
     Kernel::sp() << "MAC Address = ";
+    memcpy(this->mac.data, (const void*)regs->mac, sizeof(this->mac.data));
     hexdump((const char*)regs->mac, 6, true);
     Kernel::sp() << "\n";
 
@@ -157,6 +222,22 @@ class Rtl8139Device {
     }
   }
 
+  void RxUpper(EthernetAddress dst, EthernetAddress src, u16 protocol, kvector<u8> data) {
+    Kernel::sp() << "  L3 payload: dst ";
+    dst.print();
+    Kernel::sp() << " src ";
+    src.print();
+    Kernel::sp() << " protocol 0x" << IntRadix::Hex << protocol << "\n";
+    hexdump(data.data(), data.size(), false, 4);
+  }
+
+  void consume_rx(size_t packet_size) {
+    // align 4byte
+    rx_offset = (rx_offset + packet_size + 4 + 3) & ~3;
+    regs->current_address_of_packet_read = rx_offset - 0x10;
+    rx_offset %= (8192);
+  }
+
   void handle_rx() {
     auto status = *(u32*)(rx_buffer + rx_offset);
     auto packet_size = (status >> 16);
@@ -164,18 +245,39 @@ class Rtl8139Device {
       Kernel::sp() << "RTL8139 rx 0\n";
       return;
     }
-    Kernel::sp() << "RTL8139 rx 0x" << rx_offset << " 0x" << packet_size << " capr 0x" << regs->current_address_of_packet_read << " cbr " << regs->current_buffer_address << "\n";
+
+    // drop packet crc32 not matched
     const char *data = (const char*)rx_buffer + rx_offset + 4;
-    hexdump(data, packet_size, false, 4);
     auto calculated_crc32 = crc32iso_hdlc(0, data, packet_size-4);
     auto stored_crc32 = *(u32*)&data[packet_size-4];
     if (stored_crc32 != calculated_crc32) {
-      Kernel::sp() << "CRC32 not match! 0x" << IntRadix::Hex << stored_crc32 << " != 0x" << calculated_crc32 << "\n";
+      Kernel::sp() << "CRC32 not match, drop packet! 0x" << IntRadix::Hex << stored_crc32 << " != 0x" << calculated_crc32 << "\n";
+      consume_rx(packet_size);
+      return;
     }
+
+    Kernel::sp() << "RTL8139 rx 0x" << rx_offset << " 0x" << packet_size << " capr 0x" << regs->current_address_of_packet_read << " cbr " << regs->current_buffer_address << "\n";
+    hexdump(data, packet_size, false, 4);
     Kernel::sp() << "\n";
-    rx_offset = (rx_offset + packet_size + 4 + 3) & ~3;
-    regs->current_address_of_packet_read = rx_offset - 0x10;
-    rx_offset %= (8192);
+
+    // skip dst, src and protocol
+    const u8 *upper_data = (u8*)data + 6 + 6 + 2;
+    size_t upper_size = packet_size - 6 - 6 - 2 - 4; // subtract checksum at the end
+    kvector<u8> upper_buffer(upper_size);
+    memcpy(upper_buffer.data(), upper_data, upper_size);
+    EthernetAddress dst, src;
+    memcpy(dst.data, data, sizeof(dst.data));
+    memcpy(src.data, data+sizeof(src.data), sizeof(dst.data));
+    u16 protocol = be(*(u16*)(data+sizeof(EthernetAddress)*2));
+
+    // TODO: support multicast and broadcast
+    // drop non-unicast packet
+    if (dst != mac) {
+      consume_rx(packet_size);
+      return;
+    }
+
+    RxUpper(dst, src, protocol, std::move(upper_buffer));
   }
 
   void handle_tx() {
@@ -229,6 +331,14 @@ class Rtl8139Device {
     return true;
   }
 
+//  void SendPacket(EthernetAddress src, EthernetAddress dst, std::span<const u8> data) {
+//
+//  }
+//
+//  void ReceivePacket(EthernetAddress src, EthernetAddress dst, std::span<u8> data) {
+//
+//  }
+
   unsigned long crc32iso_hdlc(unsigned long crc, void const *mem, size_t len) {
     auto data = (unsigned char const *) mem;
     if (data == NULL)
@@ -242,19 +352,6 @@ class Rtl8139Device {
     return crc ^ 0xffffffff;
   }
 
-  u32 swap_endian(u32 v) {
-    return ((v>>0) & 0xff) << 24 |
-        ((v>>8) & 0xff) << 16 |
-        ((v>>16) & 0xff) << 8 |
-        ((v>>24) & 0xff) << 0;
-  }
-
-  u32 be(u32 v) {
-    return swap_endian(v);
-  }
-  u32 le(u32 v) {
-    return v;
-  }
 
   bool tx_async(const void *buffer, u64 size) {
     if (!tx_available) {
@@ -266,7 +363,7 @@ class Rtl8139Device {
     while (!(regs->tx_status[tx_buffer_index] & (1<<13)));
 
     // max size 1792
-    u64 tx_buffer_phy = (u64)buffer - KERNEL_START;
+    auto tx_buffer_phy = (u64)buffer - KERNEL_START;
     assert(tx_buffer_phy < (1ul<<32), "invalid tx buffer set, must be < 4G");
 
     // expand to 64-4 bytes if shorter
@@ -275,7 +372,7 @@ class Rtl8139Device {
       memset(&tx_buffer[tx_buffer_index] + size, 0, 64-4-size);
       size = 64 - 4;
     }
-    auto crc32 = crc32iso_hdlc(0, tx_buffer[tx_buffer_index], size);
+    u32 crc32 = crc32iso_hdlc(0, tx_buffer[tx_buffer_index], size);
     // append crc32
     *(u32*)&tx_buffer[tx_buffer_index][size] = le(crc32);
     size += 4;
@@ -288,6 +385,7 @@ class Rtl8139Device {
   }
 
  private:
+  EthernetAddress mac;
   volatile char *rx_buffer;
   u64 rx_buffer_size;
   u32 rx_offset = 0;

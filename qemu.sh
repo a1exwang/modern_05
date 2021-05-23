@@ -5,7 +5,6 @@ make disk.raw
 QEMU=qemu-system-x86_64
 sudo $QEMU \
   -machine q35 \
-  -nographic \
   -no-reboot \
   -m 5G \
   -vga std \
