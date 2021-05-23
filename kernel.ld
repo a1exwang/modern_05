@@ -4,7 +4,7 @@ SECTIONS
 {
 /* Currently using hack to let linker script file the object file */
   .text.start (0xffff800000100000) : {
-    CMakeFiles/kernel.dir/init/init.cpp.o( .text )
+    CMakeFiles/kernellib.dir/init/init.cpp.o( .text )
   }
 
   .text (0xffff800000110000) : ALIGN(0x1000) {

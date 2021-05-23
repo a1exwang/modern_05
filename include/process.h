@@ -1,5 +1,6 @@
 #pragma once
 #include "common/defs.h"
+#include <common/kstring.hpp>
 
 #pragma pack(push, 1)
 // If you update this struct, you should update _irq_handler and _return_from_syscall in irq.S
@@ -103,7 +104,7 @@ class Process {
   // id = 0 for empty process slot
   u64 id;
   ProcessState state = ProcessState::Wait;
-  char name[32];
+  kstring name;
   // phy addr of the start of this Process object
   u64 start_phy = 0;
   int jiffies = 0;
@@ -125,5 +126,11 @@ class Process {
   u8 *user_stack;
   u64 user_stack_size = USER_STACK_SIZE;
 
-  void (*tmp_start)() = 0;
+  void *cookie;
+
+  void (*tmp_start)(void*) = 0;
 };
+
+u64 create_kthread(const kstring &name, void (*start)(void *), void *cookie);
+
+void kyield();

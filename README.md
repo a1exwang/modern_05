@@ -9,7 +9,7 @@
 
 ## Prerequisites
 - AMD64 CPU (this OS only supports AMD64 architecture, no x86 support)
-- GCC 10 (any version should be fine as long as you can compile my code)
+- GCC 10 (any version should be fine as long as you can compile my code, currently no support for GCC 11 because FUTEX issue)
 - An environment for the OS to run, either of the three
   - qemu 6.0 + TianoCore EDK 2 (For EFI support in qemu, this OS only support EFI, no BIOS support)
   - VirtualBox 6.x (VirtualBox has native EFI support, but VirtualBox does not support RTL8139, so you do not have a working NIC driver, probably)

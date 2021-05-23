@@ -5,6 +5,7 @@
 #include <common/kmemory.hpp>
 #include <lib/string.h>
 #include <common/kvector.hpp>
+#include <common/vdtor.hpp>
 
 void pci_init();
 
@@ -93,11 +94,7 @@ class PCIDeviceDriver {
 
   // Workaround: Without this implementation, the compiler generated destructor will call ::operator delete instead,
   // which we don't have.
-  void operator delete(PCIDeviceDriver* p, std::destroying_delete_t) {
-     p->~PCIDeviceDriver();
-     kfree(p);
-  }
-  virtual ~PCIDeviceDriver() = default;
+  VIRTUAL_DTOR(PCIDeviceDriver);
 };
 
 class PCIBusDriver {

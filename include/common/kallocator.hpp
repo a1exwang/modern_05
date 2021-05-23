@@ -18,4 +18,11 @@ class kallocator {
   void deallocate(T *p, std::size_t n) {
     kfree(p);
   }
+
+  bool operator==(const kallocator<T> &rhs) const {
+    return true;
+  }
+  bool operator!=(const kallocator<T> &rhs) const {
+    return !(*this == rhs);
+  }
 };

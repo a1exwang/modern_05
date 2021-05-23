@@ -14,7 +14,7 @@ u64 current_pid = 0;
 u64 next_pid = 1;
 Process *processes[MAX_PROCESS];
 
-void create_process() {
+u64 create_process() {
   auto pid = next_pid++;
   // TODO: optimize with low memory consumption
   auto log2size = log2(sizeof(Process)) + 1;
@@ -26,6 +26,7 @@ void create_process() {
   auto process = new(process_mem) Process(pid, phy_start);
   assert(processes[pid] == nullptr, "Process already created");
   processes[pid] = process;
+  return pid;
 }
 
 void test_apic();
@@ -33,23 +34,12 @@ void test_apic();
 void rtl8139_test();
 
 void buddy_allocator_usage();
-void thread2_start() {
+void thread2_start(void *) {
   Kernel::sp() << "thread2 started\n";
 
   u64 i = 0;
   while (true) {
-    u64 reg_new;
-    register u64 reg asm("rax");
-    reg = 0x3332;
-
-    asm volatile(
-    "movq $0x2, %%rax\t\n"
-    "int $42"
-    :
-    :
-    :"%rax"
-    );
-    __asm__ __volatile__("mov %%rax, %0" :"=r"(reg_new));
+    kyield();
 //    Kernel::sp() << SerialPort::IntRadix::Hex << "thread2 run " << i << " " << reg_new << "\n";
     i++;
     if (i % 3000 == 0) {
@@ -57,7 +47,7 @@ void thread2_start() {
     }
     if (i % 5000 == 0) {
       // TODO: we need lock
-      buddy_allocator_usage();
+//      buddy_allocator_usage();
     }
   }
 }
@@ -99,7 +89,16 @@ void exec_main() {
   }
 }
 
-void main_start() {
+u64 create_kthread(const kstring &name, void (*start)(void*), void *cookie) {
+  auto pid = create_process();
+  auto p = processes[pid];
+  p->tmp_start = start;
+  p->name = name;
+  p->cookie = cookie;
+  return pid;
+}
+
+void main_start(void *) {
   cli();
 
   Kernel::sp() << "main process started\n";
@@ -166,6 +165,16 @@ void store_current_thread_context(Context *context) {
 }
 Context *current_context() {
   return &processes[current_pid]->context;
+}
+
+void kyield() {
+  asm volatile(
+  "movq $0x2, %%rax\t\n"
+  "int $42"
+  :
+  :
+  :"%rax"
+  );
 }
 
 using SyscallFunc = void (*)();
@@ -262,10 +271,10 @@ void *Process::load_elf_from_buffer(char *buffer, unsigned long size) {
   return (void*)ehdr->e_entry;
 }
 void Process::kernel_entrypoint() {
-  Kernel::sp() << "starting process pid = "<< current_pid << " '" << (const char*)name << "'\n";
+  Kernel::sp() << "starting process pid = "<< current_pid << " '" << name.c_str() << "'\n";
   if (tmp_start) {
     Kernel::sp() << "has tmp_start, going for it" << "\n";
-    tmp_start();
+    tmp_start(cookie);
   }
   halt();
 }

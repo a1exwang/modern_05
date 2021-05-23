@@ -16,3 +16,4 @@ sudo $QEMU \
   -device intel-iommu,intremap=on \
   $@
 
+#-serial stdio \

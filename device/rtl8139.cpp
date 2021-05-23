@@ -1,5 +1,3 @@
-#include <span>
-
 #include <device/rtl8139.hpp>
 #include <cpu_utils.h>
 #include <kernel.h>
@@ -11,6 +9,8 @@
 #include <mm/mm.h>
 #include <net/ethernet.hpp>
 #include <common/hexdump.hpp>
+#include <net/arp.hpp>
+#include <common/endian.hpp>
 
 constexpr u32 RxOk = 1 << 0;
 constexpr u32 RxError = 1 << 1;
@@ -20,47 +20,6 @@ constexpr u32 Timeout = 1 << 14;
 constexpr u32 RxOverflow = 0x10;
 constexpr u32 RxFifoOverflow = 0x40;
 constexpr u32 RxAck = RxOk | RxOverflow | RxFifoOverflow;
-
-template <typename T>
-T swap_endian(T v);
-template <typename T>
-T be(T v);
-template <typename T>
-T le(T v);
-
-template <>
-u32 swap_endian<u32>(u32 v) {
-  return ((v>>0) & 0xff) << 24 |
-      ((v>>8) & 0xff) << 16 |
-      ((v>>16) & 0xff) << 8 |
-      ((v>>24) & 0xff) << 0;
-}
-
-template <>
-u32 be<u32>(u32 v) {
-  return swap_endian(v);
-}
-
-template <>
-u32 le<u32>(u32 v) {
-  return v;
-}
-
-template <>
-u16 swap_endian<u16>(u16 v) {
-  return ((v>>0) & 0xff) << 8 |
-      ((v>>8) & 0xff) << 0;
-}
-
-template <>
-u16 be<u16>(u16 v) {
-  return swap_endian(v);
-}
-
-template <>
-u16 le<u16>(u16 v) {
-  return v;
-}
 
 #pragma pack(push, 1)
 struct Rtl8139Register {
@@ -99,26 +58,6 @@ const char test_message[] =
     "\x08\x00\x06\x04\x00\x01\x0a\x01\x0e\x0a\x01\x0e\xac\x14\x00\x03" \
     "\x00\x00\x00\x00\x00\x00\xac\x14\x00\x01";
 
-
-struct EthernetAddress {
-  u8 data[6];
-
-  bool operator==(const EthernetAddress &rhs) const {
-    return memcmp(data, rhs.data, sizeof(data)) == 0;
-  }
-  bool operator!=(const EthernetAddress &rhs) const {
-    return !(*this == rhs);
-  }
-
-  void print() const {
-    for (int i = 0; i < sizeof(data); i++) {
-      if (i != 0) {
-        Kernel::sp() << ":";
-      }
-      hex01(data[i]);
-    }
-  }
-};
 
 class Rtl8139Device {
  public:
@@ -168,6 +107,10 @@ class Rtl8139Device {
 //
 //    }
 
+  }
+
+  void SetArp(Arp *arp) {
+    arp_ = arp;
   }
 
   void reset() {
@@ -223,12 +166,17 @@ class Rtl8139Device {
   }
 
   void RxUpper(EthernetAddress dst, EthernetAddress src, u16 protocol, kvector<u8> data) {
-    Kernel::sp() << "  L3 payload: dst ";
-    dst.print();
-    Kernel::sp() << " src ";
-    src.print();
-    Kernel::sp() << " protocol 0x" << IntRadix::Hex << protocol << "\n";
-    hexdump(data.data(), data.size(), false, 4);
+//    Kernel::sp() << "  L3 payload: dst ";
+//    dst.print();
+//    Kernel::sp() << " src ";
+//    src.print();
+//    Kernel::sp() << " protocol 0x" << IntRadix::Hex << protocol << "\n";
+//    hexdump(data.data(), data.size(), false, 4);
+
+    if (protocol == EtherTypeARP) {
+      assert1(arp_ != nullptr);
+      arp_->HandleRx(dst, src, protocol, std::move(data));
+    }
   }
 
   void consume_rx(size_t packet_size) {
@@ -257,8 +205,8 @@ class Rtl8139Device {
     }
 
     Kernel::sp() << "RTL8139 rx 0x" << rx_offset << " 0x" << packet_size << " capr 0x" << regs->current_address_of_packet_read << " cbr " << regs->current_buffer_address << "\n";
-    hexdump(data, packet_size, false, 4);
-    Kernel::sp() << "\n";
+//    hexdump(data, packet_size, false, 4);
+//    Kernel::sp() << "\n";
 
     // skip dst, src and protocol
     const u8 *upper_data = (u8*)data + 6 + 6 + 2;
@@ -384,8 +332,9 @@ class Rtl8139Device {
     return true;
   }
 
- private:
   EthernetAddress mac;
+
+ private:
   volatile char *rx_buffer;
   u64 rx_buffer_size;
   u32 rx_offset = 0;
@@ -397,6 +346,8 @@ class Rtl8139Device {
   u64 tx_buffer_size;
   int tx_buffer_index = 0;
   bool tx_available = false;
+
+  Arp *arp_;
 
   volatile Rtl8139Register *regs;
   volatile ExtendedConfigSpace *config_space;
@@ -484,6 +435,8 @@ void rtl8139_test() {
   dev->test();
 }
 
+Arp *arp1;
+
 bool RTL8139Driver::Enumerate(PCIDeviceInfo *info) {
   bool found = false;
   PCIBar b;
@@ -498,6 +451,9 @@ bool RTL8139Driver::Enumerate(PCIDeviceInfo *info) {
   assert1(found);
   volatile void *regs_base = phy2virt(b.start);
   dev = knew<Rtl8139Device>(info->config_space, regs_base);
+  auto arp = knew<Arp>(this);
+  arp1 = arp;
+  dev->SetArp(arp);
   dev->reset();
 
   return true;
@@ -508,4 +464,23 @@ bool RTL8139Driver::HandleInterrupt(unsigned long irq_num) {
     lapic_eoi();
   }
   return handled;
+}
+
+void RTL8139Driver::Tx(EthernetAddress dst, u16 protocol, u8 *data, size_t size) {
+  kvector<u8> buf(sizeof(dst.data)*2+sizeof(u16)+size);
+  size_t offset = 0;
+
+  memcpy(buf.data() + offset, dst.data, sizeof(dst.data));
+  offset += sizeof(dst.data);
+
+  memcpy(buf.data() + offset, dev->mac.data, sizeof(dev->mac.data));
+  offset += sizeof(dev->mac.data);
+
+  memcpy(buf.data() + offset, &protocol, sizeof(protocol));
+  offset += sizeof(protocol);
+
+  memcpy(buf.data() + offset, data, size);
+  offset += size;
+
+  dev->tx_async(buf.data(), buf.size());
 }
