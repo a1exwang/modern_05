@@ -276,7 +276,8 @@ void Process::kernel_entrypoint() {
     Kernel::sp() << "has tmp_start, going for it" << "\n";
     tmp_start(cookie);
   }
-  halt();
+  Kernel::sp() << "process quit '" << name.c_str() << "'\n";
+  Kernel::k->panic("thread quit");
 }
 Process::Process(unsigned long id, unsigned long start_phy) :id(id), start_phy(start_phy) {
   auto pts_log2size = log2(sizeof(PageTabletSructures)) + 1;

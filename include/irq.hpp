@@ -5,6 +5,7 @@
 #include <common/small_vec.hpp>
 
 #define IRQ_GENERAL_PROTECTION 13
+#define IRQ_INVALID_OPCODE 6
 #define IRQ_PAGE_FAULT 14
 #define IRQ_TIMER 32
 #define IRQ_SPURIOUS 37

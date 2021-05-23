@@ -11,6 +11,7 @@
 #include <common/hexdump.hpp>
 #include <net/arp.hpp>
 #include <common/endian.hpp>
+#include <process.h>
 
 constexpr u32 RxOk = 1 << 0;
 constexpr u32 RxError = 1 << 1;
@@ -53,10 +54,10 @@ struct Rtl8139Register {
 };
 #pragma pack(pop)
 
-const char test_message[] =
-    "\xff\xff\xff\xff\xff\xff\x0a\x01\x0e\x0a\x01\x0e\x08\x06\x00\x01" \
-    "\x08\x00\x06\x04\x00\x01\x0a\x01\x0e\x0a\x01\x0e\xac\x14\x00\x03" \
-    "\x00\x00\x00\x00\x00\x00\xac\x14\x00\x01";
+//const char test_message[] =
+//    "\xff\xff\xff\xff\xff\xff\x0a\x01\x0e\x0a\x01\x0e\x08\x06\x00\x01" \
+//    "\x08\x00\x06\x04\x00\x01\x0a\x01\x0e\x0a\x01\x0e\xac\x14\x00\x03" \
+//    "\x00\x00\x00\x00\x00\x00\xac\x14\x00\x01";
 
 
 class Rtl8139Device {
@@ -109,9 +110,17 @@ class Rtl8139Device {
 
   }
 
-  void SetArp(Arp *arp) {
+  void SetArp(ArpDriver *arp) {
     arp_ = arp;
   }
+
+  static void KthreadEntry(void *cookie) {
+    ((Rtl8139Device*)cookie)->kthread_entry();
+  }
+
+  void kthread_entry();
+
+  void start_kthread();
 
   void reset() {
 
@@ -160,9 +169,9 @@ class Rtl8139Device {
   }
 
   void test() {
-    if (!tx_async(test_message, 42)) {
-      Kernel::sp() << "tx fail\n";
-    }
+//    if (!tx_async(test_message, 42)) {
+//      Kernel::sp() << "tx fail\n";
+//    }
   }
 
   void RxUpper(EthernetAddress dst, EthernetAddress src, u16 protocol, kvector<u8> data) {
@@ -177,6 +186,7 @@ class Rtl8139Device {
       assert1(arp_ != nullptr);
       arp_->HandleRx(dst, src, protocol, std::move(data));
     }
+    // TODO: handle other packet types
   }
 
   void consume_rx(size_t packet_size) {
@@ -218,9 +228,9 @@ class Rtl8139Device {
     memcpy(src.data, data+sizeof(src.data), sizeof(dst.data));
     u16 protocol = be(*(u16*)(data+sizeof(EthernetAddress)*2));
 
-    // TODO: support multicast and broadcast
+    // TODO: support multicast
     // drop non-unicast packet
-    if (dst != mac) {
+    if (!dst.IsBroadcast() && dst != mac) {
       consume_rx(packet_size);
       return;
     }
@@ -347,11 +357,17 @@ class Rtl8139Device {
   int tx_buffer_index = 0;
   bool tx_available = false;
 
-  Arp *arp_;
+  ArpDriver *arp_;
 
   volatile Rtl8139Register *regs;
   volatile ExtendedConfigSpace *config_space;
 };
+void Rtl8139Device::start_kthread() {
+  create_kthread("rtl8139", Rtl8139Device::KthreadEntry, this);
+}
+void Rtl8139Device::kthread_entry() {
+  while (true);
+}
 
 static Rtl8139Device *dev;
 
@@ -435,7 +451,7 @@ void rtl8139_test() {
   dev->test();
 }
 
-Arp *arp1;
+ArpDriver *arp1;
 
 bool RTL8139Driver::Enumerate(PCIDeviceInfo *info) {
   bool found = false;
@@ -451,10 +467,18 @@ bool RTL8139Driver::Enumerate(PCIDeviceInfo *info) {
   assert1(found);
   volatile void *regs_base = phy2virt(b.start);
   dev = knew<Rtl8139Device>(info->config_space, regs_base);
-  auto arp = knew<Arp>(this);
+  // TODO: unify management of this objects
+  auto arp = knew<ArpDriver>(this);
   arp1 = arp;
+
+  auto ip = knew<IPDriver>(this, arp);
+  arp->SetIPDriver(ip);
+
   dev->SetArp(arp);
+  SetIPDriver(ip);
   dev->reset();
+
+  dev->start_kthread();
 
   return true;
 }
@@ -483,4 +507,7 @@ void RTL8139Driver::Tx(EthernetAddress dst, u16 protocol, u8 *data, size_t size)
   offset += size;
 
   dev->tx_async(buf.data(), buf.size());
+}
+EthernetAddress RTL8139Driver::address() const {
+  return dev->mac;
 }

@@ -30,5 +30,9 @@ extern "C" {
 //    Kernel::k->stack_dump(get_rbp());
 //    Kernel::k->panic("__stack_chk_fail");
 //  }
+void abort() {
+  Kernel::k->stack_dump(get_rbp());
+  Kernel::k->panic("abort");
+}
 }
 

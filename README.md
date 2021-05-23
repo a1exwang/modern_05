@@ -102,9 +102,9 @@ $ gdb
 
 - network
   - ~~RTL8139 NIC driver~~
-    - support 8139C+
+    - support 8139C+ to zero-copy
   - **general L2 driver**
-  - **ARP**
+  - ~~ARP~~
   - IP, IPv6
   - UDP
   - TCP (maybe we won't implement a full-fledged TCP, implement just enough for SSH and HTTP)

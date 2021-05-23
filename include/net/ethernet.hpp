@@ -36,10 +36,28 @@ struct EthernetAddress {
       hex01(data[i]);
     }
   }
+
+  bool IsBroadcast() const {
+    for (auto v : data) {
+      if (v != 0xff) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static EthernetAddress Broadcast() {
+    EthernetAddress ret;
+    memset(ret.data, 0xff, sizeof(ret.data));
+    return ret;
+  }
 };
 #pragma pack(pop)
 
+class IPDriver;
 class EthernetDriver {
  public:
   virtual void Tx(EthernetAddress dst, u16 protocol, u8 *data, size_t size) = 0;
+  virtual EthernetAddress address() const = 0;
+  virtual void SetIPDriver(IPDriver *driver) = 0;
 };

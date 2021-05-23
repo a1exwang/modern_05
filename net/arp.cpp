@@ -3,7 +3,7 @@
 #include <process.h>
 #include <common/endian.hpp>
 
-void Arp::HandleRx(EthernetAddress dst, EthernetAddress src, u16 protocol, kvector<u8> data) {
+void ArpDriver::HandleRx(EthernetAddress dst, EthernetAddress src, u16 protocol, kvector<u8> data) {
   auto packet = reinterpret_cast<ArpPacket*>(data.data());
   // TODO: support other hardware address and protocol address
   if (!(be(packet->hardware_address_space) == ArpHwAddressSpaceEthernet && be(packet->protocol_address_space) == ArpProtoAddressSpaceIPv4)) {
@@ -24,49 +24,63 @@ void Arp::HandleRx(EthernetAddress dst, EthernetAddress src, u16 protocol, kvect
     return;
   }
 }
-Arp::Arp(EthernetDriver *driver) :driver_(driver), packet_queue_(4), pk_start(0), pk_end(0) {
-  arp_kthread_id = create_kthread("arp", Arp::ArpThreadStart, this);
-  for (auto &item : packet_queue_) {
-    item = knew<ArpPacket>();
-  }
+ArpDriver::ArpDriver(EthernetDriver *driver) : eth_driver_(driver) {
+  arp_kthread_id = create_kthread("arp", ArpDriver::ArpThreadStart, this);
 }
 
-void Arp::ArpThreadStart(void *cookie) {
-  auto that = (Arp *)cookie;
+// ARP thread, consumer of rx pk_queue
+void ArpDriver::ArpThreadStart(void *cookie) {
+  auto that = (ArpDriver *)cookie;
   auto packet = knew<ArpPacket>();
   // pk_start is owned by us and it only goes forward
   while (true) {
     // pktqueue consumer
-    if (that->pk_start == that->pk_end) {
-      // empty queue
-//      Kernel::sp() << "empty queue\n";
+
+    // pop to packet with swap and consume the packet
+    auto success = that->rx_queue_.deq(packet);
+    if (!success) {
       kyield();
       continue;
     }
 
-    std::swap<ArpPacket*>(that->packet_queue_[that->pk_start], packet);
-    that->pk_start = (that->pk_start + 1) % that->packet_queue_.size();
-
     Kernel::sp() << "Got ARP!!!!!!!!!!!!!!!!!!!!!!!!!\n";
-    // TODO: handle packet in packet
     hexdump((u8*)packet, sizeof(ArpPacket), false, 4);
+
+    that->put(packet->ethipv4.hw_sender, IPv4Address(be(packet->ethipv4.proto_sender)));
+
+    if (be(packet->opcode) == ArpOpcodeRequest) {
+      that->handle_request(packet);
+    }
 
     kyield();
   }
 }
 
-void Arp::queue_up_mapping(ArpPacket *packet) {
-  // pk_end is owned by us and it only goes forward
-  auto end = pk_end.load();
-  auto next = (end + 1) % packet_queue_.size();
-  if (next == pk_start) {
-    // queue full, drop new packet
-    return;
+void ArpDriver::queue_up_mapping(ArpPacket *packet) {
+  memcpy(tmp_pkt, packet, sizeof(ArpPacket));
+
+  auto success = rx_queue_.enq(tmp_pkt);
+  if (!success) {
+    Kernel::sp() << "Warning, ARP rx queue full, dropping new pkt\n";
+  }
+}
+
+void ArpDriver::handle_request(ArpPacket *packet) {
+  assert1(be(packet->opcode) == ArpOpcodeRequest);
+  auto ip_target = packet->ethipv4.proto_target;
+  auto mac_target = find(ip_target);
+  if (mac_target.has_value() && ip_driver_) {
+    ArpPacket reply_packet;
+    reply_packet.hardware_address_space = ArpHwAddressSpaceEthernet;
+    reply_packet.protocol_address_space = ArpProtoAddressSpaceIPv4;
+    reply_packet.hw_len = sizeof(EthernetAddress);
+    reply_packet.proto_len = sizeof(IPv4Address);
+    reply_packet.opcode = ArpOpcodeReply;
+    reply_packet.ethipv4.hw_sender = eth_driver_->address();
+    reply_packet.ethipv4.proto_sender = ip_driver_->address().network_order();
+    reply_packet.ethipv4.hw_target = mac_target.value();
+    reply_packet.ethipv4.proto_target = ip_target;
+//    eth_driver_->Tx(packet->ethipv4.hw_sender, ArpOpcodeReply, (u8*)&reply_packet, sizeof(ArpPacket));
   }
 
-  auto pkt = packet_queue_[end];
-  memcpy(pkt, packet, sizeof(*pkt));
-
-  pk_end = next;
-  Kernel::sp() << "queue mapping " << next << "\n";
 }

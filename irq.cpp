@@ -87,11 +87,14 @@ void InterruptProcessor::HandleInterrupt(unsigned long irq_num, unsigned long er
   if (interrupts_[irq_num].handlers_.empty()) {
     Kernel::k->serial_port_
         << "unhandled interrupt: "
-        << "IRQ = 0x" << SerialPort::IntRadix::Hex << irq_num << " error = 0x" << error_code << " thread = 0x" << current_pid << "\n"
+        << "IRQ = 0x" << SerialPort::IntRadix::Hex << irq_num << " error = 0x" << error_code << " thread = 0x" << current_pid << "(" << processes[current_pid]->name.c_str() << ")" << "\n"
         << "rip = 0x" << context->rip << " rsp = 0x" << context->rsp << "\n";
     if (irq_num == IRQ_PAGE_FAULT) {
       Kernel::k->serial_port_
           << "page fault cr2 = " << SerialPort::IntRadix::Hex << get_cr2() << "\n";
+    } else if (irq_num == IRQ_INVALID_OPCODE) {
+      Kernel::k->serial_port_
+          << "Invalid Opcode\n";
     }
 
     if (is_kernel(context->rbp)) {
