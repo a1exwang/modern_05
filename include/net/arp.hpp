@@ -25,9 +25,9 @@ struct ArpPacket {
     u8 data[0];
     struct {
       EthernetAddress hw_sender;
-      u32 proto_sender;
+      u8 proto_sender[4];
       EthernetAddress hw_target;
-      u32 proto_target;
+      u8 proto_target[4];
     } ethipv4;
   };
 };
@@ -70,7 +70,10 @@ class ArpDriver {
   }
 
   static void ArpThreadStart(void *cookie);
+  void Request(IPv4Address ip);
  private:
+  void arp_thread_poll_rx(ArpPacket *&packet);
+  void request_gateway_ethernet_address();
   void queue_up_mapping(ArpPacket *packet);
   void handle_request(ArpPacket *packet);
 

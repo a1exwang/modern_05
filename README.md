@@ -105,6 +105,7 @@ $ gdb
     - support 8139C+ to zero-copy
   - **general L2 driver**
   - ~~ARP~~
+    - sometimes arp thread stuck
   - IP, IPv6
   - UDP
   - TCP (maybe we won't implement a full-fledged TCP, implement just enough for SSH and HTTP)

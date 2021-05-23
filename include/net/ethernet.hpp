@@ -52,12 +52,32 @@ struct EthernetAddress {
     return ret;
   }
 };
+struct KEthernetPacket {
+  size_t size; // the payload size, does not include header
+  size_t max_size; // the max payload size, does not include header
+
+  // start of ethernet packet
+  u8 pkt_start[0];
+  EthernetAddress dst;
+  EthernetAddress src;
+  u16 protocol;
+  u8 data[];
+};
+constexpr size_t EthernetHeaderSize = sizeof(EthernetAddress) * 2 + sizeof(u16);
 #pragma pack(pop)
+
+#define L2MTU 1500
+static KEthernetPacket *create_packet() {
+  auto ret = (KEthernetPacket*)kmalloc(sizeof(KEthernetPacket) + L2MTU);
+  ret->size = 0;
+  ret->max_size = L2MTU;
+  return ret;
+}
 
 class IPDriver;
 class EthernetDriver {
  public:
-  virtual void Tx(EthernetAddress dst, u16 protocol, u8 *data, size_t size) = 0;
+  virtual bool TxEnqueue(EthernetAddress dst, u16 protocol, u8 *data, size_t size) = 0;
   virtual EthernetAddress address() const = 0;
   virtual void SetIPDriver(IPDriver *driver) = 0;
 };

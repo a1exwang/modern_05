@@ -24,7 +24,6 @@ class SSQueue {
     }
 
     std::swap<T*>(rx_queue_[rx_start_], packet);
-    Kernel::sp() << "deq " << rx_start_.load() << " " << rx_end_.load() << "\n";
 
     rx_start_ = (rx_start_ + 1) % rx_queue_.size();
     return true;

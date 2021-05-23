@@ -12,6 +12,7 @@
 #include <net/arp.hpp>
 #include <common/endian.hpp>
 #include <process.h>
+#include <common/kssq.hpp>
 
 constexpr u32 RxOk = 1 << 0;
 constexpr u32 RxError = 1 << 1;
@@ -21,6 +22,7 @@ constexpr u32 Timeout = 1 << 14;
 constexpr u32 RxOverflow = 0x10;
 constexpr u32 RxFifoOverflow = 0x40;
 constexpr u32 RxAck = RxOk | RxOverflow | RxFifoOverflow;
+
 
 #pragma pack(push, 1)
 struct Rtl8139Register {
@@ -54,20 +56,24 @@ struct Rtl8139Register {
 };
 #pragma pack(pop)
 
-//const char test_message[] =
-//    "\xff\xff\xff\xff\xff\xff\x0a\x01\x0e\x0a\x01\x0e\x08\x06\x00\x01" \
-//    "\x08\x00\x06\x04\x00\x01\x0a\x01\x0e\x0a\x01\x0e\xac\x14\x00\x03" \
-//    "\x00\x00\x00\x00\x00\x00\xac\x14\x00\x01";
-
+constexpr size_t TxQueueSize = 32;
 
 class Rtl8139Device {
  public:
+  static kvector<KEthernetPacket*> init_tx_queue() {
+    kvector<KEthernetPacket*> ret(TxQueueSize);
+    for (auto &item : ret) {
+      item = create_packet();
+    }
+    return ret;
+  }
   Rtl8139Device(volatile ExtendedConfigSpace *pci_config_space, volatile void *regs_base)
       :
       config_space(pci_config_space),
       regs(reinterpret_cast<volatile Rtl8139Register*>(regs_base)),
       rx_buffer_size(1<<16),
-      tx_buffer_size(1<<16) {
+      tx_buffer_size(1<<16),
+      tx_queue_(init_tx_queue()) {
 
     rx_buffer = (volatile char*) kernel_page_alloc(16);
     tx_buffer_raw = (char*) kernel_page_alloc(16);
@@ -162,8 +168,6 @@ class Rtl8139Device {
     // enable rx/tx
     regs->cmd = 0xc;
 
-    tx_available = true;
-
     // enable IRQ mask: all
     regs->imr = 0xe07f;
   }
@@ -239,9 +243,9 @@ class Rtl8139Device {
   }
 
   void handle_tx() {
-    tx_available = true;
     tx_buffer_index++;
     tx_buffer_index %= 4;
+    tx_done_ = true;
     Kernel::sp() << "RTL8139 tx ok\n";
   }
 
@@ -310,39 +314,19 @@ class Rtl8139Device {
     return crc ^ 0xffffffff;
   }
 
-
-  bool tx_async(const void *buffer, u64 size) {
-    if (!tx_available) {
-      return false;
-    }
-    tx_available = false;
-
-    // wait for host ready
-    while (!(regs->tx_status[tx_buffer_index] & (1<<13)));
-
-    // max size 1792
-    auto tx_buffer_phy = (u64)buffer - KERNEL_START;
-    assert(tx_buffer_phy < (1ul<<32), "invalid tx buffer set, must be < 4G");
-
-    // expand to 64-4 bytes if shorter
-    memcpy(tx_buffer[tx_buffer_index], buffer, size);
-    if (size < 64 - 4) {
-      memset(&tx_buffer[tx_buffer_index] + size, 0, 64-4-size);
-      size = 64 - 4;
-    }
-    u32 crc32 = crc32iso_hdlc(0, tx_buffer[tx_buffer_index], size);
-    // append crc32
-    *(u32*)&tx_buffer[tx_buffer_index][size] = le(crc32);
-    size += 4;
-
-    // set size and start tx
-    regs->tx_status[tx_buffer_index] =
-        (regs->tx_status[tx_buffer_index] & ~(1<<13)) | (size & 0xfff);
-
-    return true;
+  bool tx_ready() const {
+    return regs->tx_status[tx_buffer_index] & (1<<13);
   }
 
+  bool TxEnqueue(KEthernetPacket* &packet) {
+    return tx_queue_.enq(packet);
+  }
+
+ public:
   EthernetAddress mac;
+
+ private:
+  bool tx_async(const void *buffer, u64 size);
 
  private:
   volatile char *rx_buffer;
@@ -355,18 +339,72 @@ class Rtl8139Device {
   u32 tx_buffer_phy[4];
   u64 tx_buffer_size;
   int tx_buffer_index = 0;
-  bool tx_available = false;
-
-  ArpDriver *arp_;
+  std::atomic<bool> tx_done_ = false;
 
   volatile Rtl8139Register *regs;
   volatile ExtendedConfigSpace *config_space;
+
+  ArpDriver *arp_;
+  SSQueue<KEthernetPacket> tx_queue_;
 };
 void Rtl8139Device::start_kthread() {
   create_kthread("rtl8139", Rtl8139Device::KthreadEntry, this);
 }
+
 void Rtl8139Device::kthread_entry() {
-  while (true);
+  auto packet = create_packet();
+  size_t i = 0;
+  while (true) {
+    auto success = tx_queue_.deq(packet);
+    if (!success) {
+      i++;
+      kyield();
+      continue;
+    }
+
+    while (!tx_ready()) {
+      kyield();
+    }
+
+    size_t size = EthernetHeaderSize + packet->size;
+    bool queued = tx_async(packet->pkt_start, size);
+    if (!queued) {
+      Kernel::sp() << "rtl8139 drop tx packet, nic tx reentry\n";
+      continue;
+    }
+
+    // wait for NIC to ack the tx via IRQ
+    // TODO: replace this busy wait
+    while (!tx_done_);
+
+    tx_done_ = false;
+  }
+}
+bool Rtl8139Device::tx_async(const void *buffer, unsigned long size) {
+  if (!tx_ready()) {
+    return false;
+  }
+
+  // max size 1792
+  auto tx_buffer_phy = (u64)buffer - KERNEL_START;
+  assert(tx_buffer_phy < (1ul<<32), "invalid tx buffer set, must be < 4G");
+
+  // expand to 64-4 bytes if shorter
+  memcpy(tx_buffer[tx_buffer_index], buffer, size);
+  if (size < 64 - 4) {
+    memset(&tx_buffer[tx_buffer_index] + size, 0, 64-4-size);
+    size = 64 - 4;
+  }
+  u32 crc32 = crc32iso_hdlc(0, tx_buffer[tx_buffer_index], size);
+  // append crc32
+  *(u32*)&tx_buffer[tx_buffer_index][size] = le(crc32);
+  size += 4;
+
+  // set size and start tx
+  regs->tx_status[tx_buffer_index] =
+      (regs->tx_status[tx_buffer_index] & ~(1<<13)) | (size & 0xfff);
+
+  return true;
 }
 
 static Rtl8139Device *dev;
@@ -490,23 +528,15 @@ bool RTL8139Driver::HandleInterrupt(unsigned long irq_num) {
   return handled;
 }
 
-void RTL8139Driver::Tx(EthernetAddress dst, u16 protocol, u8 *data, size_t size) {
+bool RTL8139Driver::TxEnqueue(EthernetAddress dst, u16 protocol, u8 *payload, size_t size) {
   kvector<u8> buf(sizeof(dst.data)*2+sizeof(u16)+size);
-  size_t offset = 0;
-
-  memcpy(buf.data() + offset, dst.data, sizeof(dst.data));
-  offset += sizeof(dst.data);
-
-  memcpy(buf.data() + offset, dev->mac.data, sizeof(dev->mac.data));
-  offset += sizeof(dev->mac.data);
-
-  memcpy(buf.data() + offset, &protocol, sizeof(protocol));
-  offset += sizeof(protocol);
-
-  memcpy(buf.data() + offset, data, size);
-  offset += size;
-
-  dev->tx_async(buf.data(), buf.size());
+  auto packet = create_packet();
+  packet->size = size;
+  packet->dst = dst;
+  packet->src = dev->mac;
+  packet->protocol = cpu2be(protocol);
+  memcpy(packet->data, payload, size);
+  return dev->TxEnqueue(packet);
 }
 EthernetAddress RTL8139Driver::address() const {
   return dev->mac;

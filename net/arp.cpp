@@ -28,31 +28,23 @@ ArpDriver::ArpDriver(EthernetDriver *driver) : eth_driver_(driver) {
   arp_kthread_id = create_kthread("arp", ArpDriver::ArpThreadStart, this);
 }
 
-// ARP thread, consumer of rx pk_queue
+// ARP thread
+//   - consumer of rx_queue and send packet to L2 driver
+//   - request gateway MAC periodically
 void ArpDriver::ArpThreadStart(void *cookie) {
   auto that = (ArpDriver *)cookie;
   auto packet = knew<ArpPacket>();
-  // pk_start is owned by us and it only goes forward
+  size_t i = 0;
   while (true) {
     // pktqueue consumer
-
-    // pop to packet with swap and consume the packet
-    auto success = that->rx_queue_.deq(packet);
-    if (!success) {
-      kyield();
-      continue;
-    }
-
-    Kernel::sp() << "Got ARP!!!!!!!!!!!!!!!!!!!!!!!!!\n";
-    hexdump((u8*)packet, sizeof(ArpPacket), false, 4);
-
-    that->put(packet->ethipv4.hw_sender, IPv4Address(be(packet->ethipv4.proto_sender)));
-
-    if (be(packet->opcode) == ArpOpcodeRequest) {
-      that->handle_request(packet);
-    }
-
+    that->arp_thread_poll_rx(packet);
     kyield();
+
+    // TODO: use timer
+    if (i % 10000 == 0) {
+      that->request_gateway_ethernet_address();
+    }
+    i++;
   }
 }
 
@@ -71,16 +63,49 @@ void ArpDriver::handle_request(ArpPacket *packet) {
   auto mac_target = find(ip_target);
   if (mac_target.has_value() && ip_driver_) {
     ArpPacket reply_packet;
-    reply_packet.hardware_address_space = ArpHwAddressSpaceEthernet;
-    reply_packet.protocol_address_space = ArpProtoAddressSpaceIPv4;
-    reply_packet.hw_len = sizeof(EthernetAddress);
-    reply_packet.proto_len = sizeof(IPv4Address);
-    reply_packet.opcode = ArpOpcodeReply;
+    reply_packet.hardware_address_space = cpu2be(ArpHwAddressSpaceEthernet);
+    reply_packet.protocol_address_space = cpu2be(ArpProtoAddressSpaceIPv4);
+    reply_packet.hw_len = cpu2be((u8)sizeof(EthernetAddress));
+    reply_packet.proto_len = cpu2be((u8)sizeof(IPv4Address));
+    reply_packet.opcode = cpu2be(ArpOpcodeReply);
     reply_packet.ethipv4.hw_sender = eth_driver_->address();
-    reply_packet.ethipv4.proto_sender = ip_driver_->address().network_order();
+    memcpy(reply_packet.ethipv4.proto_sender, ip_driver_->address().b, sizeof(IPv4Address));
     reply_packet.ethipv4.hw_target = mac_target.value();
-    reply_packet.ethipv4.proto_target = ip_target;
-//    eth_driver_->Tx(packet->ethipv4.hw_sender, ArpOpcodeReply, (u8*)&reply_packet, sizeof(ArpPacket));
+    memcpy(reply_packet.ethipv4.proto_target, &ip_target, sizeof(IPv4Address));
+    eth_driver_->TxEnqueue(packet->ethipv4.hw_sender, EtherTypeARP, (u8*)&reply_packet, sizeof(ArpPacket));
   }
 
+}
+void ArpDriver::arp_thread_poll_rx(ArpPacket *&packet) {
+  // pop to packet with swap and consume the packet
+  auto success = rx_queue_.deq(packet);
+  if (!success) {
+    return;
+  }
+
+//    Kernel::sp() << "Got ARP!!!!!!!!!!!!!!!!!!!!!!!!!\n";
+//    hexdump((u8*)packet, sizeof(ArpPacket), false, 4);
+
+  put(packet->ethipv4.hw_sender, IPv4Address(packet->ethipv4.proto_sender));
+
+  if (be2cpu(packet->opcode) == ArpOpcodeRequest) {
+    handle_request(packet);
+  }
+}
+void ArpDriver::request_gateway_ethernet_address() {
+  Request(ip_driver_->gateway_address());
+}
+
+void ArpDriver::Request(IPv4Address ip_target) {
+  ArpPacket reply_packet;
+  reply_packet.hardware_address_space = cpu2be(ArpHwAddressSpaceEthernet);
+  reply_packet.protocol_address_space = cpu2be(ArpProtoAddressSpaceIPv4);
+  reply_packet.hw_len = cpu2be((u8)sizeof(EthernetAddress));
+  reply_packet.proto_len = cpu2be((u8)sizeof(IPv4Address));
+  reply_packet.opcode = cpu2be(ArpOpcodeRequest);
+  reply_packet.ethipv4.hw_sender = eth_driver_->address();
+  memcpy(reply_packet.ethipv4.proto_sender, ip_driver_->address().b, sizeof(IPv4Address));
+  memset(&reply_packet.ethipv4.hw_target, 0, sizeof(EthernetAddress));
+  memcpy(reply_packet.ethipv4.proto_target, &ip_target, sizeof(IPv4Address));
+  eth_driver_->TxEnqueue(EthernetAddress::Broadcast(), EtherTypeARP, (u8*)&reply_packet, sizeof(ArpPacket));
 }
