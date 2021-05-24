@@ -423,7 +423,27 @@ u32 read_ioapic_register(void *apic_base, const u8 offset) {
   return *(volatile u32*)((char*)apic_base + 0x10);
 }
 
+void ioapic_disable_irq(void *ioapic, u32 irq_base, u32 irq) {
+  // mask: true
+  write_ioapic_register(ioapic, 0x10 + 2*(irq - irq_base), (1<<16));
+}
+
+void ioapic_enable_irq(void *ioapic, u32 target_lapic_id, u32 irq_base, u32 irq) {
+  // deliver mode: fixed
+  // destination mode: physical
+  // pin polarity active low
+  // trigger: edge
+  // mask: false
+  write_ioapic_register(ioapic, 0x10 + 2*(irq - irq_base), irq | (1<<13));
+  write_ioapic_register(ioapic, 0x11 + 2*(irq - irq_base), (target_lapic_id << 24));
+
+  auto lo = read_ioapic_register(ioapic, 0x10 + 2*(irq - irq_base));
+  auto hi = read_ioapic_register(ioapic, 0x11 + 2*(irq - irq_base));
+  Kernel::sp() << "    IOAPIC 0x" << IntRadix::Hex << irq << ", 0x" << lo << " 0x" << hi << "\n";
+}
+
 void ioapic_init(SystemDescriptionTable* table) {
+  Kernel::sp() << "ioapic_init()\n";
   // https://wiki.osdev.org/MADT
   auto flags = *(u32*)(table->data + 4);
   if (flags & 1) {
@@ -465,22 +485,18 @@ void ioapic_init(SystemDescriptionTable* table) {
   Kernel::sp() << "IOAPIC0 version 0x" << IntRadix::Hex << (v & 0xff) << " 0x" << max_redir_entry << "\n";
 
   assert(max_redir_entry >= 1, "NO IRQ avaialble for this IO APIC");
+  assert1(max_redir_entry == IOAPIC_IRQ_COUNT);
 
-  u32 irq = 0x40;
-  for (int i = 0; i < max_redir_entry; i++) {
-    // deliver mode: fixed
-    // destination mode: physical
-    // pin polarity active low
-    // trigger: edge
-    // mask: false
-    u32 target_lapic_id = 0;
-    write_ioapic_register(ioapic0, 0x10 + 2*i, (irq+i) | (1<<13));
-    write_ioapic_register(ioapic0, 0x11 + 2*i, (target_lapic_id << 24));
-
-    auto lo = read_ioapic_register(ioapic0, 0x10 + 2*i);
-    auto hi = read_ioapic_register(ioapic0, 0x11 + 2*i);
-    Kernel::sp() << "    IOAPIC " << i << ", " << lo << " " << hi << "\n";
+  for (int irq = 0; irq < IOAPIC_IRQ_COUNT; irq++) {
+    ioapic_disable_irq(ioapic0, IOAPIC_IRQ_START, IOAPIC_IRQ_START + irq);
   }
+
+  for (int irq = IOAPIC_PCI_IRQ_START; irq < IOAPIC_PCI_IRQ_START + IOAPIC_PCI_IRQ_COUNT; irq++) {
+    ioapic_enable_irq(ioapic0, 0, IOAPIC_IRQ_START, irq);
+  }
+
+  // enable serial port
+  ioapic_enable_irq(ioapic0, 0, IOAPIC_IRQ_START, IOAPIC_ISA_IRQ_COM1);
 }
 
 void lapic_eoi();

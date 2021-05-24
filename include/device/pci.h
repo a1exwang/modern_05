@@ -9,6 +9,13 @@
 
 void pci_init();
 
+
+constexpr u16 IOAPIC_IRQ_START = 0x40;
+constexpr u16 IOAPIC_IRQ_COUNT = 0x18;
+constexpr u16 IOAPIC_ISA_IRQ_COM1 = 0x44;
+constexpr u16 IOAPIC_PCI_IRQ_START = 0x50;
+constexpr u16 IOAPIC_PCI_IRQ_COUNT = 0x8;
+
 constexpr u16 PCI_INVALID_VENDOR = 0xffff;
 constexpr u16 PCI_INVALID_DEVICE = 0xffff;
 

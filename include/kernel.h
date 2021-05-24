@@ -12,6 +12,7 @@ constexpr size_t MaxValidStacks = 8;
 
 class InterruptProcessor;
 class Syscall;
+class Serial8250;
 
 class Kernel {
  public:
@@ -34,6 +35,7 @@ class Kernel {
   InterruptProcessor *irq_;
   Syscall *syscall_;
   PCIBusDriver *pci_bus_driver_;
+  Serial8250 *com1_;
 
  public:
   SmallVec<std::tuple<u64, u64>, MaxValidStacks> stacks_;

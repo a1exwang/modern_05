@@ -3,6 +3,7 @@
 
 #include <cpu_defs.h>
 #include <common/small_vec.hpp>
+#include <kernel.h>
 
 #define IRQ_GENERAL_PROTECTION 13
 #define IRQ_INVALID_OPCODE 6

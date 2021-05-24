@@ -1,24 +1,26 @@
-#include <init/efi_info.h>
 #include <tuple>
 #include <type_traits>
-#include <lib/string.h>
+
+#include <cpu_defs.h>
+#include <cpu_utils.h>
+#include <irq.hpp>
+#include <kernel.h>
+#include <syscall.h>
+
+#include <common/kmemory.hpp>
+#include <common/unwind.hpp>
+#include <device/serial8250.hpp>
+#include <device/pci.h>
+#include <device/pci_devices.hpp>
+#include <fs/mem_fs_node.hpp>
+#include <init/efi_info.h>
 #include <lib/port_io.h>
 #include <lib/serial_port.h>
-#include <cpu_utils.h>
-#include <cpu_defs.h>
-#include <kernel.h>
-#include <irq.hpp>
+#include <lib/string.h>
 #include <mm/mm.h>
-#include "debug.h"
-#include <init/efi_info.h>
-#include <process.h>
-#include <device/pci.h>
-#include <syscall.h>
 #include <mm/page_alloc.h>
-#include <common/unwind.hpp>
-#include <common/kmemory.hpp>
-#include <fs/mem_fs_node.hpp>
-#include <device/pci_devices.hpp>
+#include <process.h>
+#include "debug.h"
 
 Kernel *Kernel::k;
 
@@ -110,6 +112,8 @@ void Kernel::start() {
   register_pci_devices(*pci_bus_driver_);
   // this will also init pci bus
   efi_table_init();
+
+  com1_ = knew<Serial8250>(0x3f8);
 
   // exec process 1
   return_from_syscall(current_context());
