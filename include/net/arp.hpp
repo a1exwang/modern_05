@@ -52,22 +52,8 @@ class ArpDriver {
     lock_.unlock();
     return ret;
   }
-  std::optional<EthernetAddress> find(IPv4Address ip) const {
-    lock_.lock();
-    std::optional<EthernetAddress> ret;
-    auto it = ip2eth.find(ip);
-    if (it != ip2eth.end()) {
-      ret = it->second;
-    }
-    lock_.unlock();
-    return ret;
-  }
-  void put(EthernetAddress eth, IPv4Address ip) {
-    lock_.lock();
-    eth2ip[eth] = ip;
-    ip2eth[ip] = eth;
-    lock_.unlock();
-  }
+  std::optional<EthernetAddress> find(IPv4Address ip) const;
+  void put(EthernetAddress eth, IPv4Address ip);
 
   static void ArpThreadStart(void *cookie);
   void Request(IPv4Address ip);

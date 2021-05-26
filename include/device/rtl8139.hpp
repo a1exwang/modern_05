@@ -5,7 +5,9 @@
 class IPDriver;
 class RTL8139Driver : public PCIDeviceDriver, public EthernetDriver {
  public:
-  RTL8139Driver() = default;
+  RTL8139Driver() :ip_driver_(nullptr) {
+    tx_packet_ = create_packet();
+  }
   kstring name() const override {
     return "rtl8139";
   }
@@ -17,5 +19,6 @@ class RTL8139Driver : public PCIDeviceDriver, public EthernetDriver {
     ip_driver_ = driver;
   }
  private:
+  KEthernetPacket *tx_packet_;
   IPDriver *ip_driver_;
 };

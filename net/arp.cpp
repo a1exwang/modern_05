@@ -109,3 +109,19 @@ void ArpDriver::Request(IPv4Address ip_target) {
   memcpy(reply_packet.ethipv4.proto_target, &ip_target, sizeof(IPv4Address));
   eth_driver_->TxEnqueue(EthernetAddress::Broadcast(), EtherTypeARP, (u8*)&reply_packet, sizeof(ArpPacket));
 }
+std::optional<EthernetAddress> ArpDriver::find(IPv4Address ip) const {
+  lock_.lock();
+  std::optional<EthernetAddress> ret;
+  auto it = ip2eth.find(ip);
+  if (it != ip2eth.end()) {
+    ret = it->second;
+  }
+  lock_.unlock();
+  return ret;
+}
+void ArpDriver::put(EthernetAddress eth, IPv4Address ip) {
+  lock_.lock();
+  eth2ip[eth] = ip;
+  ip2eth[ip] = eth;
+  lock_.unlock();
+}

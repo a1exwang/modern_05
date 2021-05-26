@@ -11,6 +11,7 @@ void print(const char *str) {
 
 extern "C" int _start() {
   const char *hello = "hello from uSeR5p@ze";
+  print(hello);
   while (1) {
 //    print(hello);
     for (int i = 0; i < 10000; i++) { }

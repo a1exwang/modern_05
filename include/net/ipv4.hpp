@@ -44,6 +44,7 @@ class IPDriver {
     // TODO: remove hardcode
     return IPv4Address{ 172, 20, 0, 1};
   }
+  void HandleRx();
  private:
   EthernetDriver *ethernet_driver_;
   ArpDriver *arp_driver_;

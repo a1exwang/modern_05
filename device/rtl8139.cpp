@@ -240,6 +240,7 @@ class Rtl8139Device {
     }
 
     RxUpper(dst, src, protocol, std::move(upper_buffer));
+    consume_rx(packet_size);
   }
 
   void handle_tx() {
@@ -272,6 +273,8 @@ class Rtl8139Device {
     }
     if (regs->isr & RxOverflow) {
       Kernel::sp() << "RTL8139 rx buffer overflow\n";
+      handle_rx();
+      regs->isr = RxOverflow;
     }
     if (regs->isr & (1<<5)) {
       Kernel::sp() << "RTL8139 packet underrun/link change\n";
@@ -545,14 +548,12 @@ bool RTL8139Driver::HandleInterrupt(unsigned long irq_num) {
 }
 
 bool RTL8139Driver::TxEnqueue(EthernetAddress dst, u16 protocol, u8 *payload, size_t size) {
-  kvector<u8> buf(sizeof(dst.data)*2+sizeof(u16)+size);
-  auto packet = create_packet();
-  packet->size = size;
-  packet->dst = dst;
-  packet->src = dev->mac;
-  packet->protocol = cpu2be(protocol);
-  memcpy(packet->data, payload, size);
-  return dev->TxEnqueue(packet);
+  tx_packet_->size = size;
+  tx_packet_->dst = dst;
+  tx_packet_->src = dev->mac;
+  tx_packet_->protocol = cpu2be(protocol);
+  memcpy(tx_packet_->data, payload, size);
+  return dev->TxEnqueue(tx_packet_);
 }
 EthernetAddress RTL8139Driver::address() const {
   return dev->mac;
