@@ -189,6 +189,9 @@ class Rtl8139Device {
     if (protocol == EtherTypeARP) {
       assert1(arp_ != nullptr);
       arp_->HandleRx(dst, src, protocol, std::move(data));
+    } else if (protocol == EtherTypeIPv4) {
+      assert1(ipv4_ != nullptr);
+      ipv4_->HandleRx(dst, src, protocol, std::move(data));
     }
     // TODO: handle other packet types
   }
@@ -325,6 +328,10 @@ class Rtl8139Device {
     return tx_queue_.enq(packet);
   }
 
+  void SetIPDriver(IPDriver *ip) {
+    ipv4_ = ip;
+  }
+
  public:
   EthernetAddress mac;
 
@@ -348,6 +355,7 @@ class Rtl8139Device {
   volatile ExtendedConfigSpace *config_space;
 
   ArpDriver *arp_;
+  IPDriver *ipv4_;
   SSQueue<KEthernetPacket> tx_queue_;
 };
 void Rtl8139Device::start_kthread() {
@@ -533,6 +541,7 @@ bool RTL8139Driver::Enumerate(PCIDeviceInfo *info) {
 
   dev->SetArp(arp);
   SetIPDriver(ip);
+  dev->SetIPDriver(ip);
   dev->reset();
 
   dev->start_kthread();

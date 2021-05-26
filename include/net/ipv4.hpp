@@ -1,5 +1,7 @@
 #pragma once
 #include <common/endian.hpp>
+#include <lib/string.h>
+#include <net/ethernet.hpp>
 
 #pragma pack(push, 1)
 struct IPv4Address {
@@ -17,6 +19,10 @@ struct IPv4Address {
       memcpy(b, rhs.b, sizeof(b));
     }
     return *this;
+  }
+
+  void print() const {
+    Kernel::sp() << IntRadix::Dec << (int)b[0] << "." << (int)b[1] << "." << (int)b[2] << "." << (int)b[3];
   }
 
   // network order
@@ -44,7 +50,7 @@ class IPDriver {
     // TODO: remove hardcode
     return IPv4Address{ 172, 20, 0, 1};
   }
-  void HandleRx();
+  void HandleRx(EthernetAddress dst, EthernetAddress src, u16 protocol, kvector<u8> data);
  private:
   EthernetDriver *ethernet_driver_;
   ArpDriver *arp_driver_;
