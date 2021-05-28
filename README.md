@@ -143,9 +143,66 @@ $ gdb
   - add a working example, maybe screencast
   - write a script to set up disk image
   - can we run this in a browser (seems not practical since there seems to be no complete AMD64 emulator in browser, no device emulation, no IOMMU, etc)
+  
+- userspace porting
+
+## Book/Document List
+This are the book and documents I read when writing this OS. Some just thoroughly read through.
+
+#### CPU
+- AMD64 Architecture Programmer's Manual Volume 1-3
+  - This manual is the most useful when writing initial platform dependent components like memory management, IRQ, IO port, assembly, etc.
+
+#### IO, IRQ
+- Advanced Configuration and Power Interface Specification Version 6.2 (ACPI)
+  - This is useful when decoding various ACPI tables from EFI to get hardware information.
+- ACPI Component Architecture User Guide and Programmer Reference Revision 6.2 by Intel (ACPICA)
+  - This library will help you interpret the OS independent byte code of ACPI
+- AMD I/O Virtualization Technology (IOMMU) Specification Rev 3.06
+  - Useful when you need to virtualize your 32-bit DMA addresses to use to full 64 bit address for legacy devices that do not support 64-bit BAR address or avoid bounce buffers.
+- Intel® I/O Controller Hub 9 (ICH9) Family Datasheet
+  - ICH9 chipset. We support this because this is the chipset qemu emulates when using EFI
+- Intel 82093AA I/O ADVANCED PROGRAMMABLE INTERRUPT CONTROLLER (IOAPIC) MANUAL
+  - IOAPIC to route your ISA IRQs to local APIC, so it will be finally handled by your ISR.
+
+#### Device
+- PCI EXPRESS BASE SPECIFICATION, REV. 3.0
+  - PCI Express spec, backward compatible with PCI spec. We need a PCI bus to connect all the devices and buses anyway.
+
+#### Network
+- RTL8139D Datasheet by Realtek
+  - This is the simplest NIC supported by qemu. Just simplicy. It is 100M full-duplex NIC.
+- RFC 826: An Ethernet Address Resolution Protocol
+  - ARP protocol to map between Ethernet address and IP address
+
+#### Block device and file system
+- Serial ATA Advanced Host Controller Interface (AHCI) 1.3.1
+  - SATA spec. We need SATA HDDs because why not. We are running on a PC, why not HDDs?
+- ZFS On-Disk Specification by Sun Microsystems
+  - ZFS sounds awesome. We don't have the license issue as Linux has. Why not use ZFS as we need a file system anyway.
+
+#### Misc
+- Unified Extensible Firmware Interface Specification 2.6
+  - UEFI spec. BIOS is dead, long live the BIOS. Very useful when you write the bootloader and some of the device enumeration. Way easier to use than BIOS.
+- Intel® 64 Architecture x2APIC Specification
+  - We will need it one day, to support SMP?
+- Executable and Linking Format (ELF) Specification Version 1.2
+  - ELF spec, not much to say. I use ELF as my executable format.
+- Linux Kernel Development 3rd Edition, a.k.a LKD
+  - Good book to reference when you copy Linux's implementations
+
+#### When things do work out...
+1. Linux source code is your best teacher. For x86 specific details, see Linux 1.0 because it is simpler. For device drivers, just read the mainline kernel.
+1. QEMU is another teacher because you can see the implementation of the actual hardware (though not recommended to depend on implementation detail, it is a good start for your bugs and questions)
+1. OSDev is your friend. If you cannot find the info from your teachers efficiently (maybe Linux or QEMU is too big), go to them. They may not answer your questions completely. But their articles are easier to get your hands on.
+1. GDB, objdump and hexdump is your final hope.
+1. If hope is lost, go to sleep and then to the first step.
 
 ## Sample output for QEMU
-
+- have a usable libc
+  - implement compatible syscall and porting glibc
+  - port a libc with syscall stubs
+  - implement my own libc
 ```text
 Shell> fs0:                                                                                                                                                                                                         
 FS0:\> boot_loader.efi                                                                                                                                                                                              
