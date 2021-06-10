@@ -37,7 +37,7 @@ add_library(kernellib
 target_compile_options(kernellib PUBLIC ${KERNEL_COMPILE_OPTIONS})
 target_link_options(kernellib PUBLIC ${KERNEL_LINK_OPTIONS})
 target_include_directories(kernellib PUBLIC ${KERNEL_INCLUDE_DIRS})
-add_dependencies(kernellib bundled_user_programs)
+add_dependencies(kernellib bundled_user_programs bundled_busybox)
 
 # These object files cannot be used. Just leave them here.
 # The crtbeginT versions are for static executables
@@ -52,6 +52,7 @@ add_executable(kernel dummy.cpp)
 target_link_libraries(kernel
         kernellib cxx device common fs lib mm net
         ${BUNDLED_USER_PROGRAMS_BINARY_DIR}/user_init.bin.o
+        ${BUNDLED_USER_PROGRAMS_BINARY_DIR}/busybox.bin.o
         ${KERNEL_LINK_LIBRARIES}
         )
 set_target_properties(kernel PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/kernel.ld)

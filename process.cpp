@@ -55,6 +55,9 @@ void thread2_start(void *) {
 extern "C" char _binary_user_init_start[];
 extern "C" char _binary_user_init_end[];
 
+extern "C" char _binary_busybox_start[];
+extern "C" char _binary_busybox_end[];
+
 Process *current() {
   return processes[current_pid];
 }
@@ -64,8 +67,12 @@ void exec_main() {
   char *start = _binary_user_init_start;
   Kernel::sp() << "init elf size = " << SerialPort::IntRadix::Hex << size << ", start bytes 0x" << (u64)start[0] << " 0x" << (u64)start[1] << "\n";
 
+  u64 busybox_size = _binary_user_init_end - _binary_busybox_start;
+  char *busybox_start = _binary_busybox_start;
+  Kernel::sp() << "busybox elf size = " << SerialPort::IntRadix::Hex << busybox_size << ", start bytes 0x" << (u64)busybox_start[0] << " 0x" << (u64)busybox_start[1] << "\n";
+
   auto proc = current();
-  auto start_addr = proc->load_elf_from_buffer(start, size);
+  auto start_addr = proc->load_elf_from_buffer(busybox_start, busybox_size);
 
   Kernel::sp() << "ELF file loaded\n";
 
@@ -259,7 +266,7 @@ void *Process::load_elf_from_buffer(char *buffer, unsigned long size) {
     if (phdr->p_type == PT_LOAD && phdr->p_memsz > 0) {
       Kernel::sp() << SerialPort::IntRadix::Hex << "  0x" << phdr->p_offset << " 0x" << phdr->p_filesz << " 0x" << phdr->p_vaddr << " 0x" << phdr->p_memsz << "\n";
       assert(phdr->p_vaddr >= 0x100000, "Segment is at wrong location");
-      assert(phdr->p_vaddr+phdr->p_memsz <= 0x200000, "Segment too big");
+      assert(phdr->p_vaddr+phdr->p_memsz <= USER_IMAGE_START + USER_IMAGE_SIZE, "Segment too big");
       if (phdr->p_filesz <= phdr->p_memsz) {
         memcpy((void*)phdr->p_vaddr, buffer + phdr->p_offset, phdr->p_filesz);
       } else {
@@ -309,8 +316,8 @@ Process::Process(unsigned long id, unsigned long start_phy) :id(id), start_phy(s
     pts->pdt[i].base_addr = (pts_paddr + ((u64)&pts->pt[i * PAGES_PER_TABLE] - (u64)pts)) >> 12;
   }
 
-  // 1MiB ~ 2MiB are for exec image
-  user_image = (u8*)(1UL*1024UL*1024UL);
+  // 1MiB ~ 9MiB are for exec image
+  user_image = (u8*)USER_IMAGE_START;
   user_image_phy_addr = physical_page_alloc(log2(USER_IMAGE_SIZE));
   map_user_addr((u64)user_image, user_image_phy_addr, user_image_size / PAGE_SIZE);
 

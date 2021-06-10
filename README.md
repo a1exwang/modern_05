@@ -93,6 +93,12 @@ $ gdb
 
 - userspace library
   - userspace syscall wrapper
+  - port mlibc
+    - ~~mlibc can compile with empty syscall wrapper~~
+    - mlibc can run hello world with some syscall wrapper
+    - mlibc can run busybox
+  - port busybox running on mlibc
+    - ~~compile ok~~
   
 - bus driver
   - ~~PCI~~

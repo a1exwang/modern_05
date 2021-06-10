@@ -53,7 +53,8 @@ constexpr u64 THREAD_KERNEL_STACK_SIZE = 16*PAGE_SIZE;
 constexpr u64 PROCESS_MAX_USER_PAGES = 512*512;
 
 constexpr u64 USER_STACK_SIZE = 1024*1024;
-constexpr u64 USER_IMAGE_SIZE = 1024*1024;
+constexpr u64 USER_IMAGE_START = 1UL*1024UL*1024UL;
+constexpr u64 USER_IMAGE_SIZE = 8UL * 1024*1024;
 
 enum ProcessState {
   Wait,

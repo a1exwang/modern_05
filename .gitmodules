@@ -1,0 +1,6 @@
+[submodule "3rdparty/mlibc"]
+	path = 3rdparty/mlibc
+	url = git@github.com:a1exwang/mlibc.git
+[submodule "3rdparty/busybox"]
+	path = 3rdparty/busybox
+	url = git@github.com:a1exwang/busybox.git
