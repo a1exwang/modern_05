@@ -20,6 +20,7 @@ class Syscall {
   void sys_close();
   void sys_exit();
   void sys_yield();
+  void sys_anon_allocate();
  private:
   Kernel *kernel_;
   Process *process_;

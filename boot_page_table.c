@@ -84,8 +84,8 @@ void setup_kernel_image_page_table(u64 kernelPhyStart) {
     t.pdt[i].base_addr = ((u64)&t.pt[PAGES_PER_TABLE * i]) >> 12;
   }
 
-  // [KERNEL_START, KERNEL_START+64MiB) -> kernel image file, non-identity mapping, not manaaged by allocator
-  // [KERNEL_START+64MiB, KERNEL_START+1G) -> identity mapping, available physical pages in this range are managed by allocator
+  // [KERNEL_START, KERNEL_START+KERNEL_IMAGE_PAGES*PAGE_SIZE) -> kernel image file, non-identity mapping, not manaaged by allocator
+  // [KERNEL_START+KERNEL_IMAGE_PAGES*PAGE_SIZE, KERNEL_START+1G) -> identity mapping, available physical pages in this range are managed by allocator
   for (u64 i = 0; i < KERNEL_SPACE_PAGES; i++) {
     t.pt[i].p = 1;
     t.pt[i].rw = 1;

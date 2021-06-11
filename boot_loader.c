@@ -258,7 +258,7 @@ EntrypointFunc LoadKernel(EFI_SYSTEM_TABLE* SystemTable, char *phyKernelStart, u
   }
 
   efi_assert(ehdr->e_phoff, L"program header table not found\n");
-  Print(L"Kernel has %d EFI sections at 0x%08x\n", ehdr->e_phnum, ehdr->e_phoff);
+  Print(L"Kernel has %d ELF sections at 0x%08x\n", ehdr->e_phnum, ehdr->e_phoff);
   Print(L"  p_offset p_filesz p_vaddr p_memsz\n", ehdr->e_phnum, ehdr->e_phoff);
   u64 newMappings = 0;
   for (int i = 0; i < ehdr->e_phnum; i++) {
@@ -275,18 +275,12 @@ EntrypointFunc LoadKernel(EFI_SYSTEM_TABLE* SystemTable, char *phyKernelStart, u
         char *target_phy = phyKernelStart + section_offset;
         Print(L" map 0x%0lx -> 0x%0lx\n", target_phy, phdr->p_vaddr);
 
-        EFI_MEMORY_DESCRIPTOR* md = efi_info.memory_descriptors + efi_info.descriptor_size * efi_info.descriptor_count;
-        efi_info.descriptor_count++;
-        md->Type = EfiBootServicesData;
-        md->Pad = 0;
-        md->PhysicalStart = (u64)target_phy;
-        md->VirtualStart = phdr->p_vaddr;
-        // ceil(memsz/4096)
-        md->NumberOfPages = (phdr->p_memsz + 4095) / 4096;
-        // noncacheable+cachable+wt-able+wb-able
-        md->Attribute = 0xf;
-
         copy(target_phy, buffer + phdr->p_offset, phdr->p_memsz);
+        if (phdr->p_memsz == 0x18) {
+          for (int k = 0; k < phdr->p_memsz; k++) {
+            Print(L"%02x ", (unsigned char)(buffer+phdr->p_offset)[k]);
+          }
+        }
       } else {
         Print(L"\n");
         Print(L"Don't know how to load sections that has filesize > memsize");
@@ -308,7 +302,7 @@ EntrypointFunc LoadKernel(EFI_SYSTEM_TABLE* SystemTable, char *phyKernelStart, u
   for (int i = 0; i < 16; i++) {
     Print(L"%02x ", (u8)((kernelEntry[i])));
   }
-  Print(L"\nkernel loaded at virt: 0x%lx, phy: 0x%lx\n", entrypoint, kernelEntry);
+  Print(L"\nkernel entry at virt: 0x%lx, phy: 0x%lx\n", entrypoint, kernelEntry);
   return entrypoint;
 }
 
@@ -381,7 +375,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   Print(L"cs: %04lx\n", result);
 
   EFI_PHYSICAL_ADDRESS PhysicalBuffer;
-  UINT64 AllocSize = (1 + 32) * 1024 * 1024;
+  UINT64 AllocSize = (1 + 64) * 1024 * 1024;
   UINTN Pages = AllocSize / 4096;
   EFI_STATUS status = efi_call4(
       SystemTable->BootServices->AllocatePages,
@@ -391,17 +385,34 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
       &PhysicalBuffer
   );
   if (status != EFI_SUCCESS) {
-    Print(L"Failed to AllocatePages\n");
+    Print(L"Failed to AllocatePages for kernel\n");
     return status;
   }
 
   Print(L"Allocated 0x%lx pages starting from 0x%lx\n", Pages, PhysicalBuffer);
 
+  EFI_PHYSICAL_ADDRESS PhysicalBufferKernelFile;
+  UINT64 KernelFileMaxSize = 8 * 1024 * 1024;
+  UINTN KernelFileMaxPages = KernelFileMaxSize / 4096;
+  status = efi_call4(
+      SystemTable->BootServices->AllocatePages,
+      AllocateAnyPages,
+      EfiBootServicesData,
+      KernelFileMaxPages,
+      &PhysicalBufferKernelFile
+  );
+  if (status != EFI_SUCCESS) {
+    Print(L"Failed to AllocatePages for kernel file\n");
+    return status;
+  }
+
   UINT64 stackStart = PhysicalBuffer;
   UINT64 stackSize = 1024 * 1024;
   UINT64 kernelStart = stackStart + stackSize;
-  char *Buffer = (char*)kernelStart;
   UINT64 KernelMaxSize = AllocSize - stackSize;
+
+
+  char *Buffer = (char*)PhysicalBufferKernelFile;
 
   print_memory_map(SystemTable);
 
@@ -414,7 +425,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     return 1;
   }
   EFI_GUID infoid = EFI_FILE_SYSTEM_INFO_ID;
-  uint64_t GetInfoBufferSize = KernelMaxSize;
+  uint64_t GetInfoBufferSize = KernelFileMaxSize;
   status = efi_call4(File->GetInfo, File, &infoid, &GetInfoBufferSize, Buffer);
   if (status != EFI_SUCCESS) {
     Print(L"Failed to getInfo 0x%lx\n", status);
@@ -442,8 +453,13 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   EFI_FILE_INFO  *f_info = Buffer;
   Print(L"Size=0x%0lx, Name='%s'\n", f_info->FileSize, f_info->FileName);
 
+  if (f_info->FileSize > KernelFileMaxSize) {
+    Print(L"Kernel file size = 0x%x bigger than, KernelFileMaxSize\n", f_info->FileSize);
+    return 1;
+  }
+
   // read file
-  UINT64 BufferSize = KernelMaxSize;
+  UINT64 BufferSize = KernelFileMaxSize;
   status = efi_call3(File->Read, FileHandle, &BufferSize, Buffer);
   if (status != EFI_SUCCESS) {
     Print(L"Failed to read kernel file st=%ld\n", status);
@@ -530,6 +546,7 @@ efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
   setup_kernel_image_page_table((void*)kernelStart);
 
   puts("kernel page table setup done\n");
+
 
   asm volatile(
       "movq %1, %%rdi \n\t"

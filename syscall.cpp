@@ -30,6 +30,7 @@ SyscallFunc syscall_table[] = {
     [SYSCALL_NR_CLOSE] = &Syscall::sys_close,
     [SYSCALL_NR_EXIT] = &Syscall::sys_exit,
     [SYSCALL_NR_YIELD] = &Syscall::sys_yield,
+    [SYSCALL_NR_ANON_ALLOCATE] = &Syscall::sys_anon_allocate,
 };
 
 }
@@ -71,4 +72,15 @@ void Syscall::sys_exit() {
   halt();
 }
 void Syscall::sys_yield() {
+}
+
+void Syscall::sys_anon_allocate() {
+  auto c = process_->context;
+  auto size = (size_t)c.rdi;
+  auto ptr = (void**)c.rsi;
+  auto &ret = (size_t&)c.rax;
+  Kernel::sp() << "process " << SerialPort::IntRadix::Dec << current_pid << " anon_allocate(0x" << IntRadix::Hex << size << ", 0x" << (u64)ptr << ")\n";
+
+  *ptr = kmalloc(size);
+  ret = (u64)ptr;
 }

@@ -74,6 +74,7 @@ void exec_main() {
 
   auto proc = current();
   auto start_addr = proc->load_elf_from_buffer(busybox_start, busybox_size);
+//  auto start_addr = proc->load_elf_from_buffer(start, size);
 
   Kernel::sp() << "ELF file loaded\n";
 

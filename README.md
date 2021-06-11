@@ -144,6 +144,8 @@ $ gdb
   - fix compiler warnings
   - compiler attributes: iomem, address_space(x), etc.
   - unit test
+  - small bugs
+    - busybox/mlibc not built everytime
 
 - docs
   - add a working example, maybe screencast

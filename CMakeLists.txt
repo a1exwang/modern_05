@@ -35,7 +35,6 @@ get_target_property(BUNDLED_USER_PROGRAMS_BINARY_DIR bundled_user_programs BINAR
 add_library(kernellib
         kernel.cpp irq.S irq.cpp init/init.cpp init/init.S debug.cpp process.cpp syscall.cpp)
 target_compile_options(kernellib PUBLIC ${KERNEL_COMPILE_OPTIONS})
-target_link_options(kernellib PUBLIC ${KERNEL_LINK_OPTIONS})
 target_include_directories(kernellib PUBLIC ${KERNEL_INCLUDE_DIRS})
 add_dependencies(kernellib bundled_user_programs bundled_busybox)
 
@@ -55,4 +54,6 @@ target_link_libraries(kernel
         ${BUNDLED_USER_PROGRAMS_BINARY_DIR}/busybox.bin.o
         ${KERNEL_LINK_LIBRARIES}
         )
+
+target_link_options(kernel PUBLIC ${KERNEL_LINK_OPTIONS})
 set_target_properties(kernel PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/kernel.ld)

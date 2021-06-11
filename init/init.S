@@ -3,7 +3,7 @@
 
 _setup_init_stack:
     popq %rdi
-    movabsq kernel_init_stack_bottom, %rax
+    movabsq (kernel_init_stack_bottom), %rax
     movq %rax, %rsp
     pushq %rdi
     ret
