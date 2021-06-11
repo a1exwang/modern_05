@@ -121,10 +121,10 @@ void PCIBusDriver::Enumerate(ECMGroup *segment_groups, size_t n) {
   }
   Kernel::sp() << "PCI Enumeration done\n";
 
-  Kernel::k->irq_->Register(IOAPIC_PCI_IRQ_START, IOAPIC_PCI_IRQ_COUNT, [this](u64 irq_num, u64 error_num, Context *context) {
+  Kernel::k->irq_->Register(IOAPIC_PCI_IRQ_START, IOAPIC_PCI_IRQ_COUNT, [this](IrqHandlerInfo *info) {
     bool handled = false;
     for (auto d : active_drivers_) {
-      if (d->HandleInterrupt(irq_num)) {
+      if (d->HandleInterrupt(info->irq_num)) {
         handled = true;
         break;
       }

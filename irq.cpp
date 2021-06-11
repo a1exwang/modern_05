@@ -87,7 +87,7 @@ void InterruptProcessor::HandleInterrupt(unsigned long irq_num, unsigned long er
   if (interrupts_[irq_num].handlers_.empty()) {
     Kernel::k->serial_port_
         << "unhandled interrupt: "
-        << "IRQ = 0x" << SerialPort::IntRadix::Hex << irq_num << " error = 0x" << error_code << " thread = 0x" << current_pid << "(" << processes[current_pid]->name.c_str() << ")" << "\n"
+        << "IRQ = 0x" << SerialPort::IntRadix::Hex << irq_num << " error = 0x" << error_code << " pid = 0x" << current_pid << "(" << processes[current_pid]->name.c_str() << ")" << "\n"
         << "rip = 0x" << context->rip << " rsp = 0x" << context->rsp << "\n";
     if (irq_num == IRQ_PAGE_FAULT) {
       Kernel::k->serial_port_
@@ -107,7 +107,14 @@ void InterruptProcessor::HandleInterrupt(unsigned long irq_num, unsigned long er
   }
 
   for (auto &handler : interrupts_[irq_num].handlers_) {
-    handler(irq_num, error_code, context);
+    IrqHandlerInfo info = {
+        .irq_num = irq_num,
+        .error_code = error_code,
+        .context = context,
+        .pid = current_pid,
+    };
+
+    handler(&info);
   }
 }
 void InterruptProcessor::setup_idt(unsigned short selector, void *default_handler) {

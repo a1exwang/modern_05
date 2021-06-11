@@ -21,7 +21,14 @@ extern "C" void return_from_syscall(struct Context*);
 extern u8 interrupt_stack[];
 extern u8 *interrupt_stack_bottom;
 
-using InterruptHandler = std::function<void (u64 irq_num, u64 error_code, Context *context)>;
+struct IrqHandlerInfo {
+  u64 irq_num;
+  u64 error_code;
+  Context *context;
+  u64 pid;
+};
+
+using InterruptHandler = std::function<void (IrqHandlerInfo *info)>;
 
 class Interrupt {
  public:

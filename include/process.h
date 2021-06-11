@@ -130,6 +130,8 @@ class Process {
   void *cookie;
 
   void (*tmp_start)(void*) = 0;
+
+  kup<Syscall> syscall_;
 };
 
 u64 create_kthread(const kstring &name, void (*start)(void *), void *cookie);

@@ -103,7 +103,7 @@ void Kernel::start() {
   irq_ = irq_init();
   fs_root_ = create_root_dir();
   process_init();
-  syscall_ = knew<Syscall>();
+  Syscall::SetupSyscall(this);
 
   // Init drivers
   lapic_init();

@@ -123,7 +123,7 @@ APIC *boot_apic = (APIC*)&_boot_apic_space;
 void lapic_init() {
   new(_boot_apic_space) APIC();
 
-  Kernel::k->irq_->Register(IRQ_TIMER, [](u64, u64, Context*) {
+  Kernel::k->irq_->Register(IRQ_TIMER, [](IrqHandlerInfo *) {
     boot_apic->eoi();
   });
 }

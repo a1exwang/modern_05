@@ -15,7 +15,7 @@ constexpr u16 Serial8250LSRDataReady = 1;
 class Serial8250 {
  public:
   Serial8250(u16 io_base);
-  bool HandleIRQ(u64 irq_num, u64 error_num, Context *context);
+  bool HandleIRQ(IrqHandlerInfo *info);
  private:
   u16 io_base;
 };

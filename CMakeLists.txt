@@ -19,7 +19,7 @@ set(KERNEL_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/kernel.ld")
 set(KERNEL_COMPILE_OPTIONS ${KERNEL_COMPILE_OPTIONS} -nostdlib -fno-exceptions -fno-builtin -fno-rtti -fno-stack-protector)
 set(KERNEL_LINK_OPTIONS ${KERNEL_LINK_OPTIONS} -fno-builtin -nostdlib -fno-exceptions -Wl,-T -Wl,${KERNEL_LINKER_SCRIPT} -Wl,--no-relax -static)
 #set(KERNEL_LINK_LIBRARIES ${KERNEL_LINK_LIBRARIES})
-set(KERNEL_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/include")
+set(KERNEL_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/include" "${CMAKE_SOURCE_DIR}/kernel-abi/include")
 
 add_subdirectory(cxx)
 add_subdirectory(common)

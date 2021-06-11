@@ -8,6 +8,7 @@
 #include <syscall.h>
 #include <irq.hpp>
 #include <elf.h>
+#include <kernel-abi/syscall_nr.h>
 
 u64 current_pid = 0;
 
@@ -183,62 +184,6 @@ void kyield() {
   :"%rax"
   );
 }
-
-using SyscallFunc = void (*)();
-
-void _sys_exit() {
-  Kernel::sp() << "process " << SerialPort::IntRadix::Dec << current_pid << " successfully exit, not implemented so halt\n";
-  halt();
-}
-
-void _sys_yield() {
-
-}
-
-void _sys_write() {
-  const char *p = (const char*)current()->context.rdi;
-  Kernel::sp() << "write() from pid " << current_pid << " content '" << p << "'\n";
-}
-
-extern "C" {
-
-// NOTE: keep these two tables in sync
-enum {
-  SYSCALL_NR_EXIT = 1,
-  SYSCALL_NR_YIELD,
-  SYSCALL_NR_WRITE,
-  SYSCALL_NR_MAX
-};
-
-// NOTE: keep these two tables in sync
-SyscallFunc syscall_table[] = {
-    nullptr,
-    &_sys_exit,
-    &_sys_yield,
-    &_sys_write,
-};
-
-}
-
-// * rax  system call number
-// * rdi  arg0
-// * rsi  arg1
-// * rdx  arg2
-// * r10  arg3
-// * r8   arg4
-// * r9   arg5
-void handle_syscall() {
-  auto &c = current()->context;
-  auto syscall_num = c.rax;
-  if (syscall_num == 0) {
-    Kernel::k->panic("Invalid syscall 0");
-  } else if (syscall_num >= SYSCALL_NR_MAX) {
-    Kernel::k->panic("Invalid syscall >= max");
-  }
-
-  syscall_table[syscall_num]();
-}
-
 void Process::map_user_addr(unsigned long vaddr, unsigned long paddr, unsigned long n_pages) {
   for (u64 i = 0; i < n_pages; i++) {
     auto vpage = (vaddr >> 12) + i;
@@ -286,7 +231,9 @@ void Process::kernel_entrypoint() {
   Kernel::sp() << "process quit '" << name.c_str() << "'\n";
   Kernel::k->panic("thread quit");
 }
-Process::Process(unsigned long id, unsigned long start_phy) :id(id), start_phy(start_phy) {
+Process::Process(unsigned long id, unsigned long start_phy)
+    :id(id), start_phy(start_phy), syscall_(make_kup<Syscall>(Kernel::k, this)) {
+
   auto pts_log2size = log2(sizeof(PageTabletSructures)) + 1;
   pts = (PageTabletSructures*)kernel_page_alloc(pts_log2size);
   pts_paddr = kernel2phy((u64)pts);
