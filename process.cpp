@@ -185,7 +185,7 @@ void kyield() {
   :"%rax"
   );
 }
-void Process::map_user_addr(unsigned long vaddr, unsigned long paddr, unsigned long n_pages) {
+void Process::map_user_addr(u64 vaddr, u64 paddr, u64 n_pages) {
   for (u64 i = 0; i < n_pages; i++) {
     auto vpage = (vaddr >> 12) + i;
     auto ppage = (paddr >> 12) + i;
@@ -268,6 +268,10 @@ Process::Process(unsigned long id, unsigned long start_phy)
   user_image = (u8*)USER_IMAGE_START;
   user_image_phy_addr = physical_page_alloc(log2(USER_IMAGE_SIZE));
   map_user_addr((u64)user_image, user_image_phy_addr, user_image_size / PAGE_SIZE);
+
+  // 16MiB ~ 32MiB for user brk
+  brk_start = USER_BRK_START;
+  brk_end = USER_BRK_START + USER_BRK_SIZE;
 
   // 32MiB ~ 33MiB are for user stack
   user_stack = (u8*)(33UL*1024UL*1024UL);

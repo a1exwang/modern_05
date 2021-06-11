@@ -14,13 +14,13 @@ class Syscall {
   static void SetupSyscall(Kernel *kernel);
 
  public:
-  void sys_read();
-  void sys_write();
-  void sys_open();
-  void sys_close();
-  void sys_exit();
-  void sys_yield();
-  void sys_anon_allocate();
+  int sys_read();
+  int sys_write();
+  int sys_open();
+  int sys_close();
+  int sys_exit();
+  int sys_yield();
+  int sys_anon_allocate();
  private:
   Kernel *kernel_;
   Process *process_;

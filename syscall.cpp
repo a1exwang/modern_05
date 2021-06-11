@@ -3,6 +3,7 @@
 #include <irq.hpp>
 #include <process.h>
 #include <kernel-abi/syscall_nr.h>
+#include <mm/mm.h>
 
 void handle_syscall(Process *p, Context *c);
 
@@ -14,7 +15,7 @@ void Syscall::SetupSyscall(Kernel *kernel) {
 }
 
 
-using SyscallFunc = void (Syscall::*)();
+using SyscallFunc = int (Syscall::*)();
 
 void _sys_exit() {
 }
@@ -52,35 +53,50 @@ void handle_syscall(Process *p, Context *c) {
 
   auto syscall_object = p->syscall_.get();
   auto syscall_func_ptr = syscall_table[syscall_num];
-  (syscall_object->*syscall_func_ptr)();
+  c->rax = (syscall_object->*syscall_func_ptr)();
 }
 
-void Syscall::sys_read() {
-
+int Syscall::sys_read() {
+  return -1;
 }
-void Syscall::sys_write() {
-
+int Syscall::sys_write() {
+  return -1;
 }
-void Syscall::sys_open() {
-
+int Syscall::sys_open() {
+  return -1;
 }
-void Syscall::sys_close() {
-
+int Syscall::sys_close() {
+  return -1;
 }
-void Syscall::sys_exit() {
+int Syscall::sys_exit() {
   Kernel::sp() << "process " << SerialPort::IntRadix::Dec << current_pid << " successfully exit, not implemented so halt\n";
   halt();
+  return -1;
 }
-void Syscall::sys_yield() {
+int Syscall::sys_yield() {
+  return 0;
 }
 
-void Syscall::sys_anon_allocate() {
-  auto c = process_->context;
+int Syscall::sys_anon_allocate() {
+  auto &c = process_->context;
   auto size = (size_t)c.rdi;
   auto ptr = (void**)c.rsi;
-  auto &ret = (size_t&)c.rax;
+  auto &ret = c.rax;
   Kernel::sp() << "process " << SerialPort::IntRadix::Dec << current_pid << " anon_allocate(0x" << IntRadix::Hex << size << ", 0x" << (u64)ptr << ")\n";
 
-  *ptr = kmalloc(size);
-  ret = (u64)ptr;
+  auto aligned_size = (size + (PAGE_SIZE-1)) / PAGE_SIZE * PAGE_SIZE;
+
+  auto buf = kmalloc(aligned_size);
+  auto buf_phy = kernel2phy((u64)buf);
+  auto brk_start = process_->brk_start;
+  process_->brk_start += aligned_size;
+  if (process_->brk_start > process_->brk_end) {
+    Kernel::sp() << "user brk overflow\n";
+    return -1;
+  }
+  process_->map_user_addr(brk_start, buf_phy, aligned_size / PAGE_SIZE);
+
+  *ptr = (void*)brk_start;
+
+  return 0;
 }

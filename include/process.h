@@ -56,6 +56,10 @@ constexpr u64 USER_STACK_SIZE = 1024*1024;
 constexpr u64 USER_IMAGE_START = 1UL*1024UL*1024UL;
 constexpr u64 USER_IMAGE_SIZE = 8UL * 1024*1024;
 
+constexpr u64 USER_BRK_START = 16UL * 1024*1024;
+constexpr u64 USER_BRK_SIZE = 16UL * 1024*1024;
+
+
 enum ProcessState {
   Wait,
   Running
@@ -126,6 +130,9 @@ class Process {
   u64 user_stack_phy_addr;
   u8 *user_stack;
   u64 user_stack_size = USER_STACK_SIZE;
+
+  u64 brk_start;
+  u64 brk_end;
 
   void *cookie;
 
