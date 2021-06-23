@@ -1,5 +1,7 @@
 #pragma once
 
+#include <sys/types.h>
+
 extern "C" {
   void do_syscall();
 }

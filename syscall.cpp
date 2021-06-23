@@ -60,7 +60,23 @@ int Syscall::sys_read() {
   return -1;
 }
 int Syscall::sys_write() {
-  return -1;
+  auto &c = process_->context;
+  int fd = (int)c.rdi;
+  auto data = (const char*)c.rsi;
+  size_t size = c.rdx;
+
+  if (fd == 0) {
+    return (ssize_t)size;
+  } else if (fd == 1 || fd == 2) {
+    Kernel::sp() << "process <" << process_->id << ">: ";
+    for (size_t i = 0; i < size; i++) {
+      Kernel::sp() << data[i];
+    }
+    Kernel::sp() << "\n";
+    return size;
+  } else {
+    return -1;
+  }
 }
 int Syscall::sys_open() {
   return -1;
