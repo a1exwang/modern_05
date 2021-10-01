@@ -38,12 +38,20 @@ boot_loader.efi: boot_loader.so
         --target=efi-app-$(ARCH) boot_loader.so boot_loader.efi
 
 
-#	dd if=/dev/zero of=disk.raw bs=1M count=64
 # a gpt partition table and create an fat32 partion(esp) and 1 ext4 partition
 disk.raw: boot_loader.efi startup.nsh kernel
+	# to remake to .disk.raw.source
+	# dd if=/dev/zero of=.disk.raw.source bs=1M count=128
+	# parted -s .disk.raw.source -- mktable gpt mkpart primary fat32 1MiB 64MiB
+	# udisksctl loop-setup -f .disk.raw.source
+	# mkfs.vfat -F 32 /dev/loopXp1
+	# udiskctl loop-delete /dev/loopX
+	cp .disk.raw.source .disk.raw
 	$(eval loop_device := $(shell udisksctl loop-setup -f disk.raw | python3 -c "import sys; print(sys.stdin.read().split()[-1][:-1])"))
 	$(info loop device ${loop_device})
-	$(eval mount_path := $(shell udisksctl mount -b $(loop_device)p1 | python3 -c "import sys; print(sys.stdin.read().split()[-1])"))
+	$(eval esp_partition := $(loop_device)p1)
+	$(info esp partition "$(esp_partition)")
+	$(eval mount_path := $(shell udisksctl mount -b $(esp_partition) | python3 -c "import sys; print(sys.stdin.read().split()[-1])"))
 	rm -rf ${mount_path}/EFI ${mount_path}/boot_loader.efi ${mount_path}/startup.nsh
 	mkdir -p ${mount_path}/EFI/Shell
 	cp /usr/share/edk2-shell/x64/Shell_Full.efi ${mount_path}/EFI/shell/bootx64.efi
@@ -52,7 +60,7 @@ disk.raw: boot_loader.efi startup.nsh kernel
 	cp boot_loader.efi ${mount_path}/
 	cp kernel ${mount_path}/
 	cp startup.nsh ${mount_path}/startup.nsh
-	udisksctl unmount -b ${loop_device}p1
+	udisksctl unmount -b ${esp_partition}
 	udisksctl loop-delete -b ${loop_device}
 
 # disk-linux.raw:
