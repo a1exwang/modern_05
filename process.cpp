@@ -68,13 +68,13 @@ void exec_main() {
   char *start = _binary_user_init_start;
   Kernel::sp() << "init elf size = " << SerialPort::IntRadix::Hex << size << ", start bytes 0x" << (u64)start[0] << " 0x" << (u64)start[1] << "\n";
 
-  u64 busybox_size = _binary_user_init_end - _binary_busybox_start;
+  u64 busybox_size = _binary_busybox_end - _binary_busybox_start;
   char *busybox_start = _binary_busybox_start;
   Kernel::sp() << "busybox elf size = " << SerialPort::IntRadix::Hex << busybox_size << ", start bytes 0x" << (u64)busybox_start[0] << " 0x" << (u64)busybox_start[1] << "\n";
 
   auto proc = current();
-  auto start_addr = proc->load_elf_from_buffer(busybox_start, busybox_size);
-//  auto start_addr = proc->load_elf_from_buffer(start, size);
+//  auto start_addr = proc->load_elf_from_buffer(busybox_start, busybox_size);
+  auto start_addr = proc->load_elf_from_buffer(start, size);
 
   Kernel::sp() << "ELF file loaded\n";
 
@@ -226,7 +226,7 @@ void *Process::load_elf_from_buffer(char *buffer, unsigned long size) {
 void Process::kernel_entrypoint() {
   Kernel::sp() << "starting process pid = "<< current_pid << " '" << name.c_str() << "'\n";
   if (tmp_start) {
-    Kernel::sp() << "has tmp_start, going for it" << "\n";
+//    Kernel::sp() << "has tmp_start, going for it" << "\n";
     tmp_start(cookie);
   }
   Kernel::sp() << "process quit '" << name.c_str() << "'\n";

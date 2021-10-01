@@ -7,6 +7,9 @@
 #include <mm/page_alloc.h>
 #include <mm/mm.h>
 #include <common/hexdump.hpp>
+#include <process.h>
+#include <device/gpt.hpp>
+
 
 void *port_register(void *ahci_reg_page, u8 port) {
   return ((char*)ahci_reg_page + 0x100) + 0x80 * port;
@@ -258,6 +261,8 @@ typedef enum
 
 #define HBA_PxIS_TFES   (1 << 30)       /* TFES - Task File Error Status */
 
+// startl, starth are sector IDs, starting from 0
+// count is in sectors, one sector is 512 byte
 bool read(HBA_PORT *port, u32 startl, u32 starth, u32 count, u64 buf_phy_addr)
 {
   port->is = (u32) -1;		// Clear pending interrupt bits
@@ -327,7 +332,7 @@ bool read(HBA_PORT *port, u32 startl, u32 starth, u32 count, u64 buf_phy_addr)
 
   port->ci = 1<<slot;	// Issue command
 
-  Kernel::sp() << "waiting for completion\n";
+//  Kernel::sp() << "waiting for completion\n";
   // Wait for completion
   while (1)
   {
@@ -385,6 +390,8 @@ bool AHCIDriver::Enumerate(PCIDeviceInfo *info) {
   auto config_space = info->config_space;
   abar = &config_space->bars[5];
   Init();
+
+  create_kthread("ahci", reinterpret_cast<void (*)(void *)>(AHCIDriver::KthreadEntry), this);
   return true;
 }
 
@@ -447,8 +454,64 @@ void AHCIDriver::Init() {
       if (sig == SATA_SIG_SATA) {
         Kernel::sp() << "  SATA device\n";
         ahci_port_init((char *) port_control_reg);
+        sata_devices.emplace_back(port_control_reg);
       }
     }
   }
 
+}
+
+void AHCIDriver::KthreadEntry(AHCIDriver *that) {
+  if (that->sata_devices.empty()) {
+    Kernel::k->panic("No AHCI device found");
+  }
+
+  // Dump GPT partition table on the first device
+  auto &device = that->sata_devices[0];
+  auto partitions = gpt::ListPrimaryPartitions(device);
+
+  Kernel::sp() << "GPT partition table on the first SATA device\n";
+  for (auto &part : partitions) {
+    Kernel::sp() << "  partition: 0x" << IntRadix::Hex << part.start_offset << ", size = 0x" << IntRadix::Hex << part.size << "\n";
+  }
+
+  while (true) {
+    kyield();
+  }
+}
+
+template <typename T>
+constexpr T align_left(T value, T alignment) {
+  static_assert(std::is_integral_v<T>);
+  return value / alignment * alignment;
+}
+
+template <typename T>
+constexpr T align_right(T value, T alignment) {
+  static_assert(std::is_integral_v<T>);
+  return (value + alignment - 1) / alignment * alignment;
+}
+
+Error AHCIDevice::Read(void *output, unsigned long start, unsigned long size) {
+  const auto sector_start_addr = align_left(start, SectorSize);
+  const auto sector_end_addr = align_right(start + size, SectorSize);
+
+  const auto start_offset = start - sector_start_addr;
+  const auto end_offset = sector_end_addr - (start + size);
+
+  const auto sector_start = sector_start_addr / SectorSize;
+  const auto sector_end = sector_end_addr / SectorSize;
+  const auto sector_count= sector_end - sector_start;
+
+  const u32 starth = (sector_start >> 32ul) & 0xffffffff;
+  const u32 startl = sector_start & 0xffffffff;
+
+
+  char *buf = (char*)kmalloc(size);
+  auto buf_phy = ((u64)buf-KERNEL_START);
+
+  const auto ok = read((HBA_PORT*)port_control_reg, startl, starth, sector_count, buf_phy);
+  memcpy(output, buf + start_offset, size);
+
+  return ok ? Error::ErrSuccess : Error::ErrFailure;
 }

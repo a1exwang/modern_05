@@ -76,6 +76,7 @@ void PCIBusDriver::Enumerate(ECMGroup *segment_groups, size_t n) {
               << " subclass 0x" << cs->subclass
               << " IRQ line 0x" << cs->interrupt_line
               << " IRQ pin 0x" << cs->interrupt_pin;
+          // NOTE: Only support one device per driver now
           auto it = drivers_.find({cs->vendor, cs->device});
           if (it != drivers_.end()) {
             Kernel::sp() << " driver '" << it->second->name().c_str() << "'\n";
