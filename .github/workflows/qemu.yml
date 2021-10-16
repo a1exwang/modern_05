@@ -31,6 +31,8 @@ jobs:
         mkdir build_cross
         cd build_cross
         meson -Dstatic=true -Dprefix=$(pwd)/install -Dbuild_tests=true --cross-file ../cross_file.txt ..
+        ninja
+        ninja install
 
     # Build busybox
     - name: Build busybox
@@ -39,6 +41,7 @@ jobs:
         ./generate_config.sh
         make SKIP_STRIP=y
 
+    # Build kernel binary
     - name: Build Kernel
       run: |
         mkdir build
