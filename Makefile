@@ -37,6 +37,13 @@ boot_loader.efi: boot_loader.so
         -j .dynsym  -j .rel -j .rela -j .reloc \
         --target=efi-app-$(ARCH) boot_loader.so boot_loader.efi
 
+setup:
+	dd if=/dev/zero of=.disk.raw.source bs=1M count=128
+	parted -s .disk.raw.source -- mktable gpt mkpart primary fat32 1MiB 64MiB
+	udisksctl loop-setup -f .disk.raw.source
+	mkfs.vfat -F 32 /dev/loopXp1
+	udiskctl loop-delete /dev/loopX
+	cp .disk.raw.source disk.raw
 
 # a gpt partition table and create an fat32 partion(esp) and 1 ext4 partition
 disk.raw: boot_loader.efi startup.nsh kernel
