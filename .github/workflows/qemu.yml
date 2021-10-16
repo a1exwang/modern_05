@@ -16,7 +16,7 @@ jobs:
     - name: Install prerequisites
       run: |
         sudo apt-get install -y \
-          ninja-build g++-10 \
+          ninja-build g++-10 wget zstd \
           gnu-efi \
           udisks2
         sudo python3 -m pip install meson
@@ -56,5 +56,13 @@ jobs:
         make
     - name: Build kernel disk image
       run: |
+        # get an EFI shell
+        wget https://archlinux.org/packages/extra/any/edk2-shell/download -O edk2-shell.tar.zstd
+        mkdir edk2-shell && cd edk2-shell && tar xvf ../edk2-shell.tar.zstd && cd ..
         cp .disk.raw.source disk.raw
-        CPATH=/usr/include/efi/x86_64 make disk.raw KERNEL_BUILD=build
+        export \
+          CPATH=/usr/include/efi/x86_64 \
+          KERNEL_BUILD=build
+        make boot_loader.efi
+        make kernel
+        sudo ./build_disk_image.sh "$(pwd)"/edk2-shell/usr/share/edk2-shell/x64/Shell_Full.efi

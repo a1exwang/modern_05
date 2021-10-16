@@ -8,10 +8,12 @@ EFILIB          = /usr/lib
 EFI_CRT_OBJS    = $(EFILIB)/crt0-efi-$(ARCH).o
 EFI_LDS         = $(EFILIB)/elf_$(ARCH)_efi.lds
 
-ifeq ($(origin DEFAULT_KERNEL_BUILD),undefined)
+ifeq ($(origin KERNEL_BUILD),undefined)
 	KERNEL_BUILD = cmake-build-debug
-else
-	KERNEL_BUILD = $(DEFAULT_KERNEL_BUILD)
+endif
+
+ifeq ($(origin EFI_SHELL),undefined)
+	EFI_SHELL = /usr/share/edk2-shell/x64/Shell_Full.efi
 endif
 
 CFLAGS          += -Iinclude -fno-stack-protector -fpic \
@@ -61,7 +63,7 @@ disk.raw: boot_loader.efi startup.nsh kernel
 	# mkfs.vfat -F 32 /dev/loopXp1
 	# udiskctl loop-delete /dev/loopX
 	# cp .disk.raw.source disk.raw
-	./build_disk_image.sh
+	./build_disk_image.sh $(EFI_SHELL)
 
 # disk-linux.raw:
 #   $(eval loop_device := $(shell udisksctl loop-setup -f disk-linux.raw | python3 -c "import sys; print(sys.stdin.read().split()[-1][:-1])"))
