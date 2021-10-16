@@ -33,6 +33,8 @@ jobs:
         meson -Dstatic=true -Dprefix=$(pwd)/install -Dbuild_tests=true --cross-file ../cross_file.txt ..
         ninja
         ninja install
+        # mlibc does not link "ar" but busybox requires it
+        ln -s /usr/bin/ar install/bin/mlibc-ar
 
     # Build busybox
     - name: Build busybox
