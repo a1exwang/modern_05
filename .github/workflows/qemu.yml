@@ -11,15 +11,31 @@ env:
 jobs:
   build:
     runs-on: ubuntu-20.04
+
+    # Code checkout
     steps:
     - name: Checkout the repo with all submodules
       uses: actions/checkout@v2
       with:
         submodules: recursive
 
-    - name: Build Busybox
+    # Build mlibc
+    - uses: actions/setup-python@v1
+    - uses: BSFishy/meson-build@v1.0.3
+      with:
+        action: test
+    - name: Build mlibc
+      run: |
+        cd 3rdparty/mlibc
+        mkdir build
+        cd build
+        meson -Dstatic=true -Dprefix=$(pwd)/install -Dbuild_tests=true --cross-file ../cross_file.txt ..
+
+    # Build busybox
+    - name: Build busybox
       run: |
         cd 3rdparty/busybox
+        echo "CONFIG_CROSS_COMPILER_PREFIX=\"$(pwd)/../mlibc/build_cross/install/bin/mlibc-\"" >> .config
         make SKIP_STRIP=y
 
     - name: Build Kernel
@@ -28,14 +44,3 @@ jobs:
         cd build
         cmake -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 ..
         make
-
-    - name: Build
-      # Build your program with the given configuration
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-
-    - name: Test
-      working-directory: ${{github.workspace}}/build
-      # Execute tests defined by the CMake configuration.  
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest -C ${{env.BUILD_TYPE}}
-      
