@@ -15,7 +15,9 @@ jobs:
     steps:
     - name: Install prerequisites
       run: |
-        sudo apt-get install -y ninja-build g++-10
+        sudo apt-get install -y \
+          ninja-build g++-10 \
+          gnu-efi
         sudo python3 -m pip install meson
 
     # Code checkout
@@ -48,5 +50,6 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 ..
+        # add gnu-efi include path
+        cmake -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=/usr/include/efi/x86_64 -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 ..
         make
