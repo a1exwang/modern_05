@@ -12,18 +12,19 @@ jobs:
   build:
     runs-on: ubuntu-20.04
 
-    # Code checkout
     steps:
+    - name: Install prerequisites
+      run: |
+        sudo apt-get install -y ninja-build g++-10
+        sudo python3 -m pip install meson
+
+    # Code checkout
     - name: Checkout the repo with all submodules
       uses: actions/checkout@v2
       with:
         submodules: recursive
 
     # Build mlibc
-    - uses: actions/setup-python@v1
-    - uses: BSFishy/meson-build@v1.0.3
-      with:
-        action: test
     - name: Build mlibc
       run: |
         cd 3rdparty/mlibc
