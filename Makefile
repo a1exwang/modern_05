@@ -8,6 +8,12 @@ EFILIB          = /usr/lib
 EFI_CRT_OBJS    = $(EFILIB)/crt0-efi-$(ARCH).o
 EFI_LDS         = $(EFILIB)/elf_$(ARCH)_efi.lds
 
+ifeq ($(origin DEFAULT_KERNEL_BUILD),undefined)
+	KERNEL_BUILD = cmake-build-debug
+else
+	KERNEL_BUILD = $(DEFAULT_KERNEL_BUILD)
+endif
+
 CFLAGS          = -Iinclude -fno-stack-protector -fpic \
           -fshort-wchar -mno-red-zone -Wall
 ifeq ($(ARCH),x86_64)
@@ -27,8 +33,8 @@ boot_loader.so: $(OBJS)
 
 # use cmake to enable IDE
 kernel: .FORCE
-	make -C cmake-build-debug kernel
-	ln -sf cmake-build-debug/kernel kernel
+	make -C $(KERNEL_BUILD) kernel
+	ln -sf $(KERNEL_BUILD)/kernel kernel
 #	g++ -nostdlib -c -o kernel.o kernel.cpp
 #	ld -static -T kernel.ld -o kernel kernel.o
 
@@ -38,12 +44,13 @@ boot_loader.efi: boot_loader.so
         --target=efi-app-$(ARCH) boot_loader.so boot_loader.efi
 
 setup:
-	dd if=/dev/zero of=.disk.raw.source bs=1M count=128
-	parted -s .disk.raw.source -- mktable gpt mkpart primary fat32 1MiB 64MiB
-	udisksctl loop-setup -f .disk.raw.source
-	mkfs.vfat -F 32 /dev/loopXp1
-	udiskctl loop-delete /dev/loopX
-	cp .disk.raw.source disk.raw
+	echo "uncomment me to run because this is potentially dangerous"
+#	dd if=/dev/zero of=.disk.raw.source bs=1M count=128
+#	parted -s .disk.raw.source -- mktable gpt mkpart primary fat32 1MiB 64MiB
+#	udisksctl loop-setup -f .disk.raw.source
+#	sudo mkfs.vfat -F 32 /dev/loop0p1
+#	udisksctl loop-delete /dev/loop0
+#	cp .disk.raw.source disk.raw
 
 # a gpt partition table and create an fat32 partion(esp) and 1 ext4 partition
 disk.raw: boot_loader.efi startup.nsh kernel

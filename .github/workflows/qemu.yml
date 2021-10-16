@@ -45,11 +45,14 @@ jobs:
         ./generate_config.sh
         make SKIP_STRIP=y
 
-    # Build kernel binary
-    - name: Build Kernel
+    # Build kernel
+    - name: Build Kernel binary
       run: |
         mkdir build
         cd build
         # add gnu-efi include path
         cmake -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=/usr/include/efi/x86_64 -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 ..
         make
+    - name: Build kernel disk image
+      run: |
+        make disk.raw KERNEL_BUILD=build
