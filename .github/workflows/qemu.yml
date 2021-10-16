@@ -17,7 +17,8 @@ jobs:
       run: |
         sudo apt-get install -y \
           ninja-build g++-10 \
-          gnu-efi
+          gnu-efi \
+          udisks2
         sudo python3 -m pip install meson
 
     # Code checkout
@@ -55,4 +56,5 @@ jobs:
         make
     - name: Build kernel disk image
       run: |
-        make disk.raw KERNEL_BUILD=build
+        cp .disk.raw.source disk.raw
+        CPATH=/usr/include/efi/x86_64 make disk.raw KERNEL_BUILD=build

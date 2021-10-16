@@ -14,13 +14,13 @@ else
 	KERNEL_BUILD = $(DEFAULT_KERNEL_BUILD)
 endif
 
-CFLAGS          = -Iinclude -fno-stack-protector -fpic \
+CFLAGS          += -Iinclude -fno-stack-protector -fpic \
           -fshort-wchar -mno-red-zone -Wall
 ifeq ($(ARCH),x86_64)
   CFLAGS += -DEFI_FUNCTION_WRAPPER
 endif
 
-LDFLAGS         = -nostdlib -znocombreloc -T $(EFI_LDS) -shared \
+LDFLAGS         += -nostdlib -znocombreloc -T $(EFI_LDS) -shared \
           -Bsymbolic -L $(EFILIB) -L $(LIB) $(EFI_CRT_OBJS)
 
 all: $(TARGET)
