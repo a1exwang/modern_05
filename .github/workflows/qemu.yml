@@ -27,15 +27,15 @@ jobs:
     - name: Build mlibc
       run: |
         cd 3rdparty/mlibc
-        mkdir build
-        cd build
+        mkdir build_cross
+        cd build_cross
         meson -Dstatic=true -Dprefix=$(pwd)/install -Dbuild_tests=true --cross-file ../cross_file.txt ..
 
     # Build busybox
     - name: Build busybox
       run: |
         cd 3rdparty/busybox
-        echo "CONFIG_CROSS_COMPILER_PREFIX=\"$(pwd)/../mlibc/build_cross/install/bin/mlibc-\"" >> .config
+        ./generate_config.sh
         make SKIP_STRIP=y
 
     - name: Build Kernel
